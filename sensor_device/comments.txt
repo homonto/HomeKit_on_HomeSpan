@@ -1,0 +1,76 @@
+s2 new board temp sensor: 68:67:25:24:02:dc
+s2 liligo bridge:         7c:df:a1:0b:dd:0c
+esp32s                    0C:B8:15:CC:9A:D0
+used S:                   0c:b8:15:cc:c9:7c
+
+
+// battery calculation
+DEBUG on:
+  S2:
+      1: work:
+      scan channels up to 8th:
+      work time: 680ms
+      avg current: 90mA
+      charge:     60mC
+
+      2: sleep time: 180s
+      avg current: 38uA
+
+      battery 500mAh with 20% reserve: 1062 hours = 44 days
+
+      1: work:
+      set channel to 8th:
+      work time: 275ms
+      avg current: 66mA
+      charge:     18mC
+      battery 500mAh with 20% reserve: 3089 hours = 128 days
+
+      2: sleep time: 180s
+      avg current: 38uA   with LDO
+
+  S:
+      1: work:
+      scan channels up to 8th:
+      work time: 1090ms
+      avg current: 168mA
+      charge:     184mC
+
+      2: sleep time: 180s
+      avg current: 4uA
+
+      battery 500mAh with 20% reserve: 390 hours = 16 days
+
+      1: work:
+      set channel to 8th:
+      work time: 540ms
+      avg current: 71mA
+      charge:     38mC
+      battery 500mAh with 20% reserve: 1855 hours = 77 days
+
+      2: sleep time: 180s
+      avg current: 4uA without LDO
+
+  C3:
+    1: work:
+    scan channels up to 8th:
+    work time: 770 ms /
+    avg current: 126 mA
+    charge:     98 mC
+
+    2: sleep time: 180s
+    avg current: 20 uA with LDO
+
+    battery 500mAh with 20% reserve: 390 hours = 16 days
+
+    1: work:
+    set channel to 8th:
+    work time: 222ms
+    avg current: 65mA
+    charge:     14.4mC
+    battery 500mAh with 20% reserve: 1855 hours = 77 days
+
+    2: sleep time: 180s
+    avg current: 20uA with LDO
+=====================
+S2 with MAX, LUX, SHT: 36uA sleep, 203ms, avg: 64mA
+C3 with MAX, LUX, SHT: 22uA sleep, 186ms, avg: 63mA
