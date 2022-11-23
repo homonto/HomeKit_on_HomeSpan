@@ -37,7 +37,7 @@
   - add ORG and FAKE MAC to Captive Portal
 */
 
-#define FW_VERSION          "0.1.11"
+#define FW_VERSION          "0.2.0"
 #define CLIENT              "001-fv"
 
 
@@ -90,14 +90,14 @@
 #include "HomeSpan.h"
 SpanPoint *mainDevice;
 
-typedef struct struct_message          // 16 bytes
+typedef struct struct_message          // 24 bytes
 {
   float md_temp;
   float md_hum;
   float md_light;
-  byte low_bat;
+  uint8_t md_bat;
   char md_version[10];
-  byte md_mcu_model;
+  uint8_t md_mcu_model;
 } struct_message;
 
 struct_message myData;
@@ -1043,10 +1043,19 @@ void setup()
     // hibernate(true, (sleeptime_s / 2)); // sleep half time on error
   } else
   {
-    lipo.quickStart();
+    // lipo.quickStart();     // not needed rather, MAX17048 can recalculate in the time
     #ifdef DEBUG
       Serial.printf("[%s]: start MAX17048 OK\n",__func__);
     #endif
+    // reset MAX17048 if NOT woke up from deep sleep and apply MAX17048_DELAY_ON_RESET_MS
+    if (boot_reason != 8)
+    {
+      // #ifdef DEBUG
+        Serial.printf("[%s]: Resetting MAX17048 and applying delay for %dms\n",__func__,MAX17048_DELAY_ON_RESET_MS);
+      // #endif
+      lipo.reset();
+      delay(MAX17048_DELAY_ON_RESET_MS);
+    }
   }
 #else
   #ifdef DEBUG
@@ -1393,14 +1402,21 @@ void setup()
     #endif
   #endif
 
-myData.low_bat = 0;
+myData.md_bat = 0;
 float volts = 0.0f;
+float bat_pct_float = 0.0f;
 #if (USE_MAX17048 == 1)
   unsigned max17048_start_measure_time = millis();
   #ifdef DEBUG
     Serial.printf("[%s]: Time since start=%dms\n",__func__,(max17048_start_measure_time-max17048_begin_time));
   #endif
   volts = lipo.getVoltage();
+
+  bat_pct_float = lipo.getSOC();
+  u_int8_t bat_pct = round(bat_pct_float);
+  if (bat_pct > 100) bat_pct=100;
+  myData.md_bat=bat_pct;
+
   // volts = 0.9;   // for testing only
   if (volts < 1)
   {
@@ -1423,7 +1439,6 @@ float volts = 0.0f;
       Serial.printf("[%s]: Battery empty (%0.2fV) - going to sleep for %ds\n",__func__,volts,(24*60*60));
       hibernate(true, (SLEEP_TIME_H_BATTERY_EMPTY*60*60)); // 24 hours sleep if battery empty
     }
-    myData.low_bat = 1;
     #ifdef DEBUG
       Serial.printf("[%s]: LOW battery!\n",__func__);
     #endif
@@ -1452,7 +1467,7 @@ float volts = 0.0f;
   myData.md_mcu_model = BOARD_TYPE;
   snprintf(myData.md_version,sizeof(myData.md_version),"%s",FW_VERSION);
 
-  Serial.printf("\n[%s]: Temperature=%0.2fC, Humidity=%0.2f%%, Light=%0.2flx, Low battery=%d, Volts=%0.2fV\n",__func__,myData.md_temp,myData.md_hum,myData.md_light,myData.low_bat,volts);
+  Serial.printf("\n[%s]: Temperature=%0.2fC, Humidity=%0.2f%%, Light=%0.2flx, Battery percent=%d%%, Volts=%0.2fV\n",__func__,myData.md_temp,myData.md_hum,myData.md_light,myData.md_bat,volts);
   Serial.printf("[%s]: MCU model=%d, version=%s\n\n",__func__,myData.md_mcu_model,myData.md_version);
 
   // sending data to bridge

@@ -68,11 +68,11 @@
 // DEVICES
 // sensors fake MAC addresses - must be the same on sensor devices!
 #define DEVICE_ID_1               "1A:01:01:01:01:01" // C3
-#define DEVICE_ID_1_NAME          "box1"
+#define DEVICE_ID_1_NAME          "box 1 sensors"
 #define DEVICE_ID_2               "1A:01:01:01:01:02" // S2 - without the box - development, office
-#define DEVICE_ID_2_NAME          "box2"
+#define DEVICE_ID_2_NAME          "box 2 sensors"
 #define DEVICE_ID_3               "1A:01:01:01:01:03" // C3
-#define DEVICE_ID_3_NAME          "box3"
+#define DEVICE_ID_3_NAME          "box 3 sensors"
 
 // devices FW - fake as it is updated by DEVICE when connected
 // #define DEVICE_FW                 "0.1.1"
@@ -80,7 +80,7 @@
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.1.9"     // only numbers here!
+#define BRIDGE_FW                 "0.2.0"     // only numbers here!
 // BRIDGE END
 
 // macros
@@ -101,14 +101,14 @@
 
 // END of SETTING
 
-typedef struct struct_message          // 28 bytes
+typedef struct struct_message          // 24 bytes
 {
   float md_temp;
   float md_hum;
   float md_light;
-  byte md_low_bat;
+  uint8_t md_bat;
   char md_version[10];
-  byte md_mcu_model;
+  uint8_t md_mcu_model;
 } struct_message;
 
 struct_message myData;
@@ -117,16 +117,17 @@ struct_message myData;
 float temperature_value;
 float humidity_value;
 float light_value;
-byte low_bat_value        = 1;
+uint8_t low_bat              = 1; 
+uint8_t bat_value_pct;
 char md_version_value[10];
-byte md_mcu_model_value   = 0;
+uint8_t md_mcu_model_value   = 0;
 const char models[10][15]        = {"other", "ESP32", "ESP32-S2", "ESP32-S3", "ESP32-C3"}; //    // [number of models][length of string] - used only in Serial not on HomeKit
 
 bool temperature_received = false;
 bool humidity_received    = false;
 bool light_received       = false;
+bool bat_received         = false;
 
-// bool temperature_timeout  = true;
 
 bool device_timeout = false;      // used to send fault = 1 for each sensor
 
@@ -258,6 +259,7 @@ void check_charging(void*z)
 }
 
 
+// REMOTE DEVICES 
 struct UpdateData : Service::AccessoryInformation
 {
   SpanCharacteristic *md_version;
@@ -298,17 +300,17 @@ struct UpdateData : Service::AccessoryInformation
       LOG0("\n[%s]: Update from device=%s...\n",__func__,macAddress);
       temperature_value     = myData.md_temp;     // update temperature
       temperature_received  = true;
-      // temperature_timeout   = false;
       humidity_value        = myData.md_hum;      // update humidity
       humidity_received     = true;
       light_value           = myData.md_light;    // update light
       light_received        = true;
-      low_bat_value         = myData.md_low_bat;  // update low battery
       md_mcu_model_value    = myData.md_mcu_model;  // update model
+      bat_value_pct         = myData.md_bat;    // update battery percent
+      bat_received          = true;
 
       snprintf(md_version_value,sizeof(md_version_value),"%s",myData.md_version); // update version
       
-      LOG0("[%s]:  Raw data from device %s just arrived: temp=%0.2fC, hum=%0.2f%%, light=%0.2flx, low_bat=%d, model=%d (%s), version=%s\n",__func__,name,temperature_value,humidity_value,light_value,low_bat_value,md_mcu_model_value,models[md_mcu_model_value],md_version_value);
+      LOG0("[%s]:  Raw data from device %s just arrived: temp=%0.2fC, hum=%0.2f%%, light=%0.2flx, bat_value_pct=%d%%, model=%d (%s), version=%s\n",__func__,name,temperature_value,humidity_value,light_value,bat_value_pct,md_mcu_model_value,models[md_mcu_model_value],md_version_value);
 
       md_version->setString(md_version_value);                    // update version
 
@@ -328,7 +330,6 @@ struct RemoteTempSensor : Service::TemperatureSensor
 {
   SpanCharacteristic *temp;
   SpanCharacteristic *fault;
-  SpanCharacteristic *low_bat;
   
   const char *name;
   const char *macAddress;
@@ -340,7 +341,6 @@ struct RemoteTempSensor : Service::TemperatureSensor
     temp=new Characteristic::CurrentTemperature(0);           // set initial temperature
     temp->setRange(-50,150);                                  // expand temperature range to allow negative values
     fault=new Characteristic::StatusFault(0);                 // set initial state = no fault
-    low_bat=new Characteristic::StatusLowBattery(1);          // initial battery status, 1=low battery, 0=battery OK
   }
 
   void loop()
@@ -359,9 +359,6 @@ struct RemoteTempSensor : Service::TemperatureSensor
         LOG1("[%s]: Temperature from sensor %s on device %s=%f, fault=%d\n",__func__,name,macAddress,temperature_value,fault->getVal());
         temperature_received = false;
       }
-      // battery, together with temperature - no need for extra bool
-      low_bat->setVal(low_bat_value);                      // update low_bat
-      LOG1("[%s]: Low battery from sensor %s on device %s=%d\n",__func__,name,macAddress,low_bat_value);
     } else 
     // DON'T PRINT HERE ANYTHING!
     if (device_timeout) 
@@ -445,6 +442,51 @@ struct RemoteLightSensor : Service::LightSensor
         LOG1("[%s]: Light from sensor %s on device %s=%f\n",__func__,name,macAddress,light_value);
         light_received = false;
       }
+    } else 
+    // DON'T PRINT HERE ANYTHING!
+    if (device_timeout) 
+    {
+      fault->setVal(1);   
+    }
+  }
+
+};
+
+
+struct RemoteBattery : Service::BatteryService
+{
+  SpanCharacteristic *battery_level;
+  SpanCharacteristic *charging_state;
+  SpanCharacteristic *low_battery;
+  const char *name;
+  const char *macAddress;
+
+  RemoteBattery(const char *name, const char*macAddress) : Service::BatteryService()
+  {
+    this->name=name;
+    this->macAddress=macAddress;
+    new Characteristic::Name("Battery sensor");
+    battery_level     = new Characteristic::BatteryLevel(0);                     // set initial state to 0%
+    charging_state    = new Characteristic::ChargingState(0);                    // set initial state to "not charging" - charging is always OFF as sensor does not sense it
+    low_battery       = new Characteristic::StatusLowBattery(1);                 // set initial state to true
+  }
+
+  void loop()
+  {
+    if (bat_received)
+    {
+      battery_level->setVal(bat_value_pct);   // update light
+      if (bat_value_pct < 30) 
+      {
+        low_bat=1;
+      } else
+      {
+        low_bat=0;
+      }
+      low_battery->setVal(low_bat);  
+      LOG1("[%s]: Battery data from sensor %s on device %s: battery level=%d%%, low_battery=%d\n",__func__,name,macAddress,bat_value_pct,low_bat);
+      bat_received = false;
+
       // should RED LED blink when new message comes? maybe not..
       #ifdef BLINK_ERROR_LED_ON_RECEIVED_DATA
         #ifdef ERROR_RED_LED_GPIO
@@ -459,12 +501,13 @@ struct RemoteLightSensor : Service::LightSensor
     // DON'T PRINT HERE ANYTHING!
     if (device_timeout) 
     {
-      fault->setVal(1);   
       device_timeout = false; // clear timeout as all data already done for this device and this timeout is not relevant to next devices
     }
   }
-
 };
+
+// REMOTE DEVICES END
+
 
 
 struct UpdateBattery : Service::BatteryService
@@ -509,7 +552,6 @@ struct UpdateBattery : Service::BatteryService
     }
   }
 };
-
 
 struct DEV_Identify : Service::AccessoryInformation 
 {
@@ -668,7 +710,7 @@ void setup()
   homeSpan.setTimeServerTimeout(NTP_SERVER_TIMEOUT_S);
   homeSpan.setSketchVersion(SKETCH_VERSION);
 
-// HUB:
+// BRIDGE:
   new SpanAccessory();
     new DEV_Identify(HOSTNAME,MANUFACTURER,ORG_BRIDGE_MAC,MODEL,BRIDGE_FW,IDENTIFY_BLINKS);
     new UpdateBattery();
@@ -679,13 +721,15 @@ void setup()
     new RemoteTempSensor("Temperature Sensor",DEVICE_ID_1);        
     new RemoteHumSensor("Humidity Sensor",DEVICE_ID_1);        
     new RemoteLightSensor("Light Sensor",DEVICE_ID_1);  
+    new RemoteBattery(DEVICE_ID_1_NAME,DEVICE_ID_1);    
 
 // DEVICE 2
   new SpanAccessory();
     new UpdateData(DEVICE_ID_2_NAME,DEVICE_ID_2);                 
     new RemoteTempSensor("Temperature Sensor",DEVICE_ID_2);        
     new RemoteHumSensor("Humidity Sensor",DEVICE_ID_2);        
-    new RemoteLightSensor("Light Sensor",DEVICE_ID_2);        
+    new RemoteLightSensor("Light Sensor",DEVICE_ID_2);       
+    new RemoteBattery(DEVICE_ID_2_NAME,DEVICE_ID_2);     
 
 // DEVICE 3
   new SpanAccessory();
@@ -693,6 +737,7 @@ void setup()
     new RemoteTempSensor("Temperature Sensor",DEVICE_ID_3);        
     new RemoteHumSensor("Humidity Sensor",DEVICE_ID_3);        
     new RemoteLightSensor("Light Sensor",DEVICE_ID_3);  
+    new RemoteBattery(DEVICE_ID_3_NAME,DEVICE_ID_3);    
 
   // magic starts here
   homeSpan.begin(Category::Bridges,HOSTNAME,HOSTNAME);
