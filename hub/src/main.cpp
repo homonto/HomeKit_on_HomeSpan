@@ -83,7 +83,7 @@
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.1.8b1"
+#define BRIDGE_FW                 "0.1.8"     // only numbers here!
 // BRIDGE END
 
 // macros
