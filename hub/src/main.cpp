@@ -69,21 +69,18 @@
 // sensors fake MAC addresses - must be the same on sensor devices!
 #define DEVICE_ID_1               "1A:01:01:01:01:01" // C3
 #define DEVICE_ID_1_NAME          "box1"
-// #define DEVICE_ID_1_MODEL         "ESP32-C3"
 #define DEVICE_ID_2               "1A:01:01:01:01:02" // S2 - without the box - development, office
 #define DEVICE_ID_2_NAME          "box2"
-// #define DEVICE_ID_2_MODEL         "ESP32-S2"
 #define DEVICE_ID_3               "1A:01:01:01:01:03" // C3
 #define DEVICE_ID_3_NAME          "box3"
-// #define DEVICE_ID_3_MODEL         "ESP32-C3"
 
 // devices FW - fake as it is updated by DEVICE when connected
-#define DEVICE_FW                 "0.1.1"
+// #define DEVICE_FW                 "0.1.1"
 // DEVICES END
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.1.8"     // only numbers here!
+#define BRIDGE_FW                 "0.1.9"     // only numbers here!
 // BRIDGE END
 
 // macros
@@ -93,12 +90,14 @@
 #define NTP_SERVER_TIMEOUT_S      30
 #define LOG_LEVEL                 0
 #define UPDATE_TIMEOUT_S          900   // 900 = 15min, after this time Bridge reports failure of the device
-//use one of them below: STATUS LED or ERROR LED
+
+//use one of them below: STATUS LED or ERROR LED  - blinks when new message comes from DEVICES
 // #define BLINK_STATUS_LED_ON_RECEIVED_DATA   
 #define BLINK_ERROR_LED_ON_RECEIVED_DATA    
+
 #define BATTERY_INTERVAL_S        5   // in seconds, how often to update battery status and charging status of the hub on HomeKit (battery/charging is measured every second)
-#define LOW_BATTERY_THRESHOLD     30  // in % to start complaining
-#define IDENTIFY_BLINKS           10  // number of blinks when identify is called
+#define LOW_BATTERY_THRESHOLD     30  // in % to start complaining (low battery status = 1)
+#define IDENTIFY_BLINKS           10  // number of blinks when identify is called (hub only)
 
 // END of SETTING
 
@@ -127,10 +126,11 @@ bool temperature_received = false;
 bool humidity_received    = false;
 bool light_received       = false;
 
-bool temperature_timeout  = true;
+// bool temperature_timeout  = true;
 
-bool device_timeout = false;
+bool device_timeout = false;      // used to send fault = 1 for each sensor
 
+// for tasks
 BaseType_t xReturned_check_volts;
 TaskHandle_t check_volts_handle = NULL;
 BaseType_t xReturned_led_blink;
@@ -139,10 +139,10 @@ TaskHandle_t led_blink_handle = NULL;
 BaseType_t xReturned_check_charging;
 TaskHandle_t check_charging_handle = NULL;
 
+// aux for blinking as pointers was segfaulting 
 bool blinking = false;
 
 float volts, bat_pct; 
-// charging 
 uint8_t charging_int = 0;          // 0-NC,  1-ON, 2-FULL,   // 3-off ??
 const char charging_states[3][5] = {"NC", "ON", "FULL"};  // "OFF"};
 
@@ -298,7 +298,7 @@ struct UpdateData : Service::AccessoryInformation
       LOG0("\n[%s]: Update from device=%s...\n",__func__,macAddress);
       temperature_value     = myData.md_temp;     // update temperature
       temperature_received  = true;
-      temperature_timeout   = false;
+      // temperature_timeout   = false;
       humidity_value        = myData.md_hum;      // update humidity
       humidity_received     = true;
       light_value           = myData.md_light;    // update light
@@ -362,8 +362,6 @@ struct RemoteTempSensor : Service::TemperatureSensor
       // battery, together with temperature - no need for extra bool
       low_bat->setVal(low_bat_value);                      // update low_bat
       LOG1("[%s]: Low battery from sensor %s on device %s=%d\n",__func__,name,macAddress,low_bat_value);
-
-      Serial.printf("[%s]: Device %s, sensor %s,temperature=%0.2fC, fault=%d\n",__func__,macAddress,name,temperature_value,fault->getVal());
     } else 
     // DON'T PRINT HERE ANYTHING!
     if (device_timeout) 
@@ -512,6 +510,7 @@ struct UpdateBattery : Service::BatteryService
   }
 };
 
+
 struct DEV_Identify : Service::AccessoryInformation 
 {
   int nBlinks;                    // number of times to blink built-in LED in identify routine
@@ -528,8 +527,6 @@ struct DEV_Identify : Service::AccessoryInformation
     identify=new Characteristic::Identify();          // store a reference to the Identify Characteristic for use below
 
     this->nBlinks=nBlinks;                            // store the number of times to blink the LED
-
-    // pinMode(homeSpan.getStatusPin(),OUTPUT);          // make sure LED is set for output
   }
 
   boolean update()
@@ -576,7 +573,7 @@ void setup()
   homeSpan.enableOTA();         // homespan-ota
   homeSpan.enableAutoStartAP(); // AP if no WiFi credentials
   homeSpan.setHostNameSuffix("");;
-  // homeSpan.setStatusAutoOff(5);  // turn OFF LED - not good as no info about the life of hub
+  // homeSpan.setStatusAutoOff(5);  // turn OFF LED - not good as no info about the life of hub then
 
   // change MAC
   char mac_org_char[22];
@@ -603,8 +600,8 @@ void setup()
     #ifdef DEBUG
       Serial.printf("[%s]: CHARGING_GPIO and POWER_GPIO enabled\n",__func__);
     #endif
-    pinMode(CHARGING_GPIO, INPUT_PULLUP);  //both down: NC initially, will be changed when checked
-    pinMode(POWER_GPIO, INPUT_PULLUP);
+    pinMode(CHARGING_GPIO, INPUT_PULLUP);   // must be PULLUP as TP4056 is Active LOW
+    pinMode(POWER_GPIO, INPUT_PULLUP);      // must be PULLUP as TP4056 is Active LOW
     xReturned_check_charging = xTaskCreatePinnedToCore(check_charging, "check_charging", 5000, NULL, 1, &check_charging_handle, CONFIG_ARDUINO_RUNNING_CORE);
     if( xReturned_check_charging != pdPASS )
     {
@@ -620,16 +617,17 @@ void setup()
   #endif
   // start start checking charging END  
 
-  // MAX17048 - fuel gauge
-  #if (USE_MAX17048 == 1)
-    #if defined(CUSTOM_SDA_GPIO) and defined(CUSTOM_SCL_GPIO)
+  #if defined(CUSTOM_SDA_GPIO) and defined(CUSTOM_SCL_GPIO)
     #ifdef DEBUG
         Serial.printf("[%s]: CUSTOM I2C GPIO pins applied: SDA=%d, SCL=%d\n",__func__,CUSTOM_SDA_GPIO,CUSTOM_SCL_GPIO);
     #endif
       Wire.setPins(CUSTOM_SDA_GPIO,CUSTOM_SCL_GPIO);
-    #endif
-    Wire.begin();
-    delay(100); 
+  #endif
+  Wire.begin();
+  delay(100); 
+
+  // MAX17048 - fuel gauge
+  #if (USE_MAX17048 == 1)
     unsigned long max17048_begin_time = millis();
     #ifdef DEBUG
       lipo.enableDebugging();
@@ -639,10 +637,10 @@ void setup()
     {
       Serial.printf("[%s]: MAX17048 NOT detected ... Check your wiring or I2C ADDR!\n",__func__);
       Serial.printf("[%s]: HALTING PROGRAM\n",__func__);
-      while (1){}
+      while (1){}     // if no MAX17048 then program halts
     } else
     {
-      // lipo.quickStart();
+      // lipo.quickStart();     // not needed rather, MAX17048 can recalculate in the time
       #ifdef DEBUG
         Serial.printf("[%s]: start MAX17048 OK\n",__func__);
       #endif
@@ -675,8 +673,6 @@ void setup()
     new DEV_Identify(HOSTNAME,MANUFACTURER,ORG_BRIDGE_MAC,MODEL,BRIDGE_FW,IDENTIFY_BLINKS);
     new UpdateBattery();
       
-      
-
 // DEVICE 1
   new SpanAccessory();
     new UpdateData(DEVICE_ID_1_NAME,DEVICE_ID_1);                 
@@ -698,9 +694,10 @@ void setup()
     new RemoteHumSensor("Humidity Sensor",DEVICE_ID_3);        
     new RemoteLightSensor("Light Sensor",DEVICE_ID_3);  
 
+  // magic starts here
   homeSpan.begin(Category::Bridges,HOSTNAME,HOSTNAME);
 
-  //OTA in Setup
+  //OTA in Setup - must be after homeSpan.begin as wifi starts there
   #ifdef OTA_ACTIVE
     strlcpy(ota_user, OTA_USER, sizeof(ota_user));
     strlcpy(ota_password, OTA_PASSWORD, sizeof(ota_password));
@@ -719,7 +716,6 @@ void setup()
   //OTA in Setup END
 
 }
-
 
 
 void loop()
