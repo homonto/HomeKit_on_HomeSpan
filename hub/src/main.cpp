@@ -83,7 +83,7 @@
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.1.7"
+#define BRIDGE_FW                 "0.1.8b1"
 // BRIDGE END
 
 // macros
@@ -92,7 +92,7 @@
 #define NTP_SERVER                "pool.ntp.org"
 #define NTP_SERVER_TIMEOUT_S      30
 #define LOG_LEVEL                 0
-#define UPDATE_TIMEOUT_S          66   // 900 = 15min, after this time Bridge reports failure of the device
+#define UPDATE_TIMEOUT_S          900   // 900 = 15min, after this time Bridge reports failure of the device
 //use one of them below: STATUS LED or ERROR LED
 // #define BLINK_STATUS_LED_ON_RECEIVED_DATA   
 #define BLINK_ERROR_LED_ON_RECEIVED_DATA    
@@ -251,7 +251,7 @@ void check_charging(void*z)
     if ((!power_gpio_state)  and (charging_gpio_state))   charging_int = 2; // FULL/CHARGED
     // if ((digitalRead(POWER_GPIO) == 1) and (digitalRead(CHARGING_GPIO) == 1)) charging_int = 3; // OFF ??
 
-    LOG1("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
+    LOG2("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
 
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
