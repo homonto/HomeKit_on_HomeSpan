@@ -1,28 +1,28 @@
 #if DEVICE_ID == 1                    // first ESP32S
-    #define BOARD_TYPE                1     // 1 = ESP32-S, 2 = ESP32-S2, 3 = ESP32-S3, 4 = ESP32-C3
-    #define ORG_BRIDGE_MAC            "0C:B8:15:CC:9A:D0" //used for SN of device - change it to real one
-    // bridge fake MAC
-    #define BRIDGE_MAC                "1A:FF:01:01:01:01" //same as below, used as SN of the device
-    uint8_t FixedMACAddress[] =       {0x1A, 0xFF, 0x01, 0x01, 0x01, 0x01};
-    #define STATUS_LED_GPIO           5
-    #define CONTROL_PIN               0
+//     #define BOARD_TYPE                1     // 1 = ESP32-S, 2 = ESP32-S2, 3 = ESP32-S3, 4 = ESP32-C3
+//     #define ORG_BRIDGE_MAC            "0C:B8:15:CC:9A:D0" //used for SN of device - change it to real one
+//     // bridge fake MAC
+//     #define BRIDGE_MAC                "1A:FF:01:01:01:01" //same as below, used as SN of the device
+//     uint8_t FixedMACAddress[] =       {0x1A, 0xFF, 0x01, 0x01, 0x01, 0x01};
+//     #define STATUS_LED_GPIO           5
+//     #define CONTROL_PIN               0
 
-  #pragma message "compilation for: DEVICE_ID=1, ESP32-S"
-// ---------------------------------------------------------------------------------------------------
+//   #pragma message "compilation for: DEVICE_ID=1, ESP32-S"
+// // ---------------------------------------------------------------------------------------------------
 
-#elif DEVICE_ID == 2
-    #define BOARD_TYPE                3     // 1 = ESP32-S, 2 = ESP32-S2, 3 = ESP32-S3, 4 = ESP32-C3
-    #define ORG_BRIDGE_MAC            "f4:12:fa:40:de:ac" //used for SN of device - change it to real one
-    // bridge fake MAC
-    uint8_t FixedMACAddress[] =       {0x1A, 0xFF, 0x01, 0x01, 0x01, 0x01};
-    #define STATUS_LED_GPIO                5
-    #define CONTROL_PIN               0
+// #elif DEVICE_ID == 2
+//     #define BOARD_TYPE                3     // 1 = ESP32-S, 2 = ESP32-S2, 3 = ESP32-S3, 4 = ESP32-C3
+//     #define ORG_BRIDGE_MAC            "f4:12:fa:40:de:ac" //used for SN of device - change it to real one
+//     // bridge fake MAC
+//     uint8_t FixedMACAddress[] =       {0x1A, 0xFF, 0x01, 0x01, 0x01, 0x01};
+//     #define STATUS_LED_GPIO                5
+//     #define CONTROL_PIN               0
 
-  #pragma message "compilation for: DEVICE_ID=2, ESP32-S3"
-// ---------------------------------------------------------------------------------------------------
+//   #pragma message "compilation for: DEVICE_ID=2, ESP32-S3"
+// // ---------------------------------------------------------------------------------------------------
 
 #elif DEVICE_ID == 3
-    #define HOSTNAME                  "hub1"
+    #define HOSTNAME                  "bridge1"
     #define BOARD_TYPE                2     // 1 = ESP32-S, 2 = ESP32-S2, 3 = ESP32-S3, 4 = ESP32-C3
     #define ORG_BRIDGE_MAC            "7c:df:a1:17:c6:86" //used for SN of device - change it to real one
     // bridge fake MAC
@@ -44,9 +44,8 @@
     #define POWER_GPIO                38  // GREEN, STDB PIN6 on TP4056, LOW on CHARGED (LED ON),       comment out if not in use - don't use "0" here
     #define CHARGING_GPIO             39  // RED,   CHRG PIN7 on TP4056, LOW during CHARGING (LED ON),  comment out if not in use - don't use "0" here
     
-
   #pragma message "compilation for: DEVICE_ID=3, ESP32-S2"
-// 
+// ---------------------------------------------------------------------------------------------------
 
 #else
   #error "Wrong DEVICE_ID chosen"
