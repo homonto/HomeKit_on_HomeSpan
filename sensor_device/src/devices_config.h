@@ -32,7 +32,9 @@
   #define ENABLE_3V_GPIO              3     // comment out if not in use - don't use "0" here - mandatory for I2C devices on new boards
   #define CUSTOM_SDA_GPIO             8     // override default SDA pin
   #define CUSTOM_SCL_GPIO             9     // override default SCL pin
-  // #define ADC_GPIO                    1     // comment out if not in use
+  #define POWER_GPIO                  38  // GREEN, STDB PIN6 on TP4056, LOW on CHARGED (LED ON),       comment out if not in use - don't use "0" here
+  #define CHARGING_GPIO               39  // RED,   CHRG PIN7 on TP4056, LOW during CHARGING (LED ON),  comment out if not in use - don't use "0" here
+  
 
   #define USE_MAX17048                1     // use "0" to disable
   #define USE_SHT31                   1     // use "0" to disable

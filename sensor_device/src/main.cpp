@@ -37,12 +37,12 @@
   - add ORG and FAKE MAC to Captive Portal
 */
 
-#define FW_VERSION          "0.2.1"
+#define FW_VERSION          "0.3.0"
 #define CLIENT              "001-fv"
 
 
-#define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
-// #define DEVICE_ID           2 // S2 - without the box - development -  "homekit-sensor-2"
+// #define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
+#define DEVICE_ID           2 // S2 - without the box - development -  "homekit-sensor-2"
 // #define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
 
 
@@ -98,6 +98,7 @@ typedef struct struct_message          // 24 bytes
   uint8_t md_bat;
   char md_version[10];
   uint8_t md_mcu_model;
+  uint8_t md_charging;
 } struct_message;
 
 struct_message myData;
@@ -146,9 +147,13 @@ byte boot_reason; // esp_reset_reason_t ???
 uint64_t wakeup_gpio_mask;
 byte wakeup_gpio;
 
+// charging
+uint8_t charging_int = 0;          // 0-NC,  1-ON, 2-FULL,   // 3-off ??
+const char charging_states[3][5] = {"NC", "ON", "FULL"};  // "OFF"};
+
+
 // declarations
 void change_mac();
-// void setup_wifi();
 void sos(int led);
 void do_update();
 void updateFirmware(uint8_t *data, size_t len);
@@ -157,6 +162,7 @@ void hibernate(bool force, int final_sleeping_time_s);
 void do_esp_restart();
 void led_blink(void *pvParams);
 void cp_timer( TimerHandle_t xTimer );
+void check_charging();
 
 // CAPTIVE PORTAL
 #include <nvs_flash.h>
@@ -934,6 +940,39 @@ void cp_timer( TimerHandle_t cp_timer_handle )
   do_esp_restart();
 }
 
+void check_charging()
+{
+
+  /*
+    - both GPIO must be PULLUP as LOW is active from TP4056
+    - LEDs on TP4056 are NOT needed if PULL_UP both GPIO
+    
+    #define POWER_GPIO                38  // GREEN, STDB PIN6 on TP4056, LOW on CHARGED (LED ON),       comment out if not in use - don't use "0" here
+    #define CHARGING_GPIO             39  // RED,   CHRG PIN7 on TP4056, LOW during CHARGING (LED ON),  comment out if not in use - don't use "0" here
+    
+    truth table:
+    NC:               POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP)
+    CHARGING:         POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO LOW     
+    FULL (CHARGED):   POWER_GPIO LOW              CHARGING_GPIO HIGH (PULLUP)
+    OFF (DISABLED):   POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP) ???? - not checked yet
+
+    */
+
+    uint8_t power_gpio_state    = digitalRead(POWER_GPIO);
+    uint8_t charging_gpio_state = digitalRead(CHARGING_GPIO);
+
+    if ((power_gpio_state)   and (charging_gpio_state))   charging_int = 0; // NC
+    if ((power_gpio_state)   and (!charging_gpio_state))  charging_int = 1; // ON/CHARGING
+    if ((!power_gpio_state)  and (charging_gpio_state))   charging_int = 2; // FULL/CHARGED
+    // if ((digitalRead(POWER_GPIO) == 1) and (digitalRead(CHARGING_GPIO) == 1)) charging_int = 3; // OFF ??
+
+    #ifdef DEBUG
+      Serial.printf("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
+    #endif
+}
+
+
+
 void setup()
 {
   start_time = millis();
@@ -1414,47 +1453,59 @@ void setup()
     #endif
   #endif
 
-myData.md_bat = 0;
-float volts = 0.0f;
-float bat_pct_float = 0.0f;
-#if (USE_MAX17048 == 1)
-  unsigned max17048_start_measure_time = millis();
-  #ifdef DEBUG
-    Serial.printf("[%s]: Time since start=%dms\n",__func__,(max17048_start_measure_time-max17048_begin_time));
-  #endif
+  // battery
+  myData.md_bat = 0;
+  float volts = 0.0f;
+  float bat_pct_float = 0.0f;
+  #if (USE_MAX17048 == 1)
+    unsigned max17048_start_measure_time = millis();
+    #ifdef DEBUG
+      Serial.printf("[%s]: Time since start=%dms\n",__func__,(max17048_start_measure_time-max17048_begin_time));
+    #endif
 
-  volts = lipo.getVoltage();
-  bat_pct_float = lipo.getSOC();
-  u_int8_t bat_pct = round(bat_pct_float);
-  if (bat_pct > 100) bat_pct=100;
-  myData.md_bat=bat_pct;
+    volts = lipo.getVoltage();
+    bat_pct_float = lipo.getSOC();
+    u_int8_t bat_pct = round(bat_pct_float);
+    if (bat_pct > 100) bat_pct=100;
+    myData.md_bat=bat_pct;
 
-  #ifdef DEBUG
-    Serial.printf("[%s]: Battery=%0.2fV\n",__func__,volts);
-    Serial.printf("[%s]: Low battery threshold=%0.2fV, Minimum battery threshold=%0.2f\n",__func__,LOW_BATTERY_VOLTS,MINIMUM_VOLTS);
-  #endif
-  if (volts <= LOW_BATTERY_VOLTS)
-  {
-    if (volts <= MINIMUM_VOLTS)
+    #ifdef DEBUG
+      Serial.printf("[%s]: Battery=%0.2fV\n",__func__,volts);
+      Serial.printf("[%s]: Low battery threshold=%0.2fV, Minimum battery threshold=%0.2f\n",__func__,LOW_BATTERY_VOLTS,MINIMUM_VOLTS);
+    #endif
+    if (volts <= LOW_BATTERY_VOLTS)
     {
-      Serial.printf("[%s]: Battery empty (%0.2fV) - going to sleep for %ds\n",__func__,volts,(24*60*60));
-      hibernate(true, (SLEEP_TIME_H_BATTERY_EMPTY*60*60)); // 24 hours sleep if battery empty
+      if (volts <= MINIMUM_VOLTS)
+      {
+        Serial.printf("[%s]: Battery empty (%0.2fV) - going to sleep for %ds\n",__func__,volts,(24*60*60));
+        hibernate(true, (SLEEP_TIME_H_BATTERY_EMPTY*60*60)); // 24 hours sleep if battery empty
+      }
+      #ifdef DEBUG
+        Serial.printf("[%s]: LOW battery!\n",__func__);
+      #endif
+    } else
+    {
+      #ifdef DEBUG
+        Serial.printf("[%s]: Battery OK\n",__func__);
+      #endif
     }
     #ifdef DEBUG
-      Serial.printf("[%s]: LOW battery!\n",__func__);
+      unsigned max17048_end_time = millis();
+      Serial.printf("[%s]: Measuring battery took %ums\n",__func__,(max17048_end_time-max17048_start_measure_time));
     #endif
-  } else
-  {
-    #ifdef DEBUG
-      Serial.printf("[%s]: Battery OK\n",__func__);
-    #endif
-  }
-  #ifdef DEBUG
-    unsigned max17048_end_time = millis();
-    Serial.printf("[%s]: Measuring battery took %ums\n",__func__,(max17048_end_time-max17048_start_measure_time));
+    lipo.enableHibernate();     // measurement every 45s
   #endif
-  lipo.enableHibernate();     // measurement every 45s
-#endif
+  // battery END
+
+  //charging
+  myData.md_charging=0;
+  #if defined(POWER_GPIO) and defined(CHARGING_GPIO)
+    pinMode(CHARGING_GPIO, INPUT_PULLUP);   // must be PULLUP as TP4056 is Active LOW
+    pinMode(POWER_GPIO, INPUT_PULLUP);      // must be PULLUP as TP4056 is Active LOW
+    check_charging();
+    myData.md_charging=charging_int;
+  #endif
+  //charging END
 
   // turn OFF power for I2C devices
   #ifdef ENABLE_3V_GPIO
@@ -1469,7 +1520,7 @@ float bat_pct_float = 0.0f;
   snprintf(myData.md_version,sizeof(myData.md_version),"%s",FW_VERSION);
 
   Serial.printf("\n[%s]: Temperature=%0.2fC, Humidity=%0.2f%%, Light=%0.2flx, Battery percent=%d%%, Volts=%0.2fV\n",__func__,myData.md_temp,myData.md_hum,myData.md_light,myData.md_bat,volts);
-  Serial.printf("[%s]: MCU model=%d, version=%s\n\n",__func__,myData.md_mcu_model,myData.md_version);
+  Serial.printf("[%s]: Charging=%d (%s), MCU model=%d, version=%s\n\n",__func__,myData.md_charging, charging_states[charging_int], myData.md_mcu_model,myData.md_version);
 
   // sending data to bridge
   #ifdef DEBUG
