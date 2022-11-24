@@ -42,8 +42,8 @@
 
 
 // #define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
-// #define DEVICE_ID           2 // S2 - without the box - development -  "homekit-sensor-2"
-#define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
+#define DEVICE_ID           2 // S2 - without the box - development -  "homekit-sensor-2"
+// #define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
 
 
 // #define DEBUG
@@ -586,6 +586,7 @@ void change_mac()
 // blink nicely - SOS on upgrade failure
 void sos(int led)
 {
+  Serial.printf("[%s]: SOS...\n",__func__);
   #define DIT_MS 50;
   int dit = DIT_MS;
   int dah = 3 * dit;
@@ -623,6 +624,7 @@ void sos(int led)
     delay(dit);
   }
   delay(inter_letter);
+  Serial.printf("[%s]: SOS DONE\n",__func__);
 }
 
 // FW upgrade wrapper
@@ -906,10 +908,22 @@ void hibernate(bool force, int final_sleeping_time_s) // force = true -> wake up
 void do_esp_restart()
 {
   Serial.printf("[%s]: RESTARTING...\n",__func__);
+  // NOT GOOD IDEA TO SOS() WHEN "NORMAL" RESTART I.E. FW UPDATE
+  // #ifdef ERROR_RED_LED_GPIO
+  //   sos(ERROR_RED_LED_GPIO);
+  // #elif defined(ACT_BLUE_LED_GPIO)
+  //   sos(ACT_BLUE_LED_GPIO);
+  // #endif
   #ifdef ERROR_RED_LED_GPIO
-    sos(ERROR_RED_LED_GPIO);
+    digitalWrite(ERROR_RED_LED_GPIO,LOW);
+    delay(10);
+    digitalWrite(ERROR_RED_LED_GPIO,HIGH);
+    delay(200);
   #elif defined(ACT_BLUE_LED_GPIO)
-    sos(ACT_BLUE_LED_GPIO);
+    digitalWrite(ACT_BLUE_LED_GPIO,LOW);
+    delay(10);
+    digitalWrite(ACT_BLUE_LED_GPIO,HIGH);
+    delay(200);
   #endif
   ESP.restart();
 }
@@ -1411,10 +1425,17 @@ float bat_pct_float = 0.0f;
     Serial.printf("[%s]: Time since start=%dms\n",__func__,(max17048_start_measure_time-max17048_begin_time));
   #endif
   volts = lipo.getVoltage();
-
   bat_pct_float = lipo.getSOC();
+  lipo.getChangeRate();
+  volts = lipo.getVoltage();
+  bat_pct_float = lipo.getSOC();
+
+  // Serial.printf("[%s]: Battery %% org=%0.2f%\n",__func__,bat_pct_float);
   u_int8_t bat_pct = round(bat_pct_float);
   if (bat_pct > 100) bat_pct=100;
+
+  // Serial.printf("[%s]: Battery %% adjusted=%d%\n",__func__,bat_pct);
+
   myData.md_bat=bat_pct;
 
   // volts = 0.9;   // for testing only
@@ -1450,9 +1471,9 @@ float bat_pct_float = 0.0f;
   }
   #ifdef DEBUG
     unsigned max17048_end_time = millis();
-    Serial.printf("[%s]: Measuring battery took %ums\n",__func__,(max17048_end_time-max17048_start_time));
+    Serial.printf("[%s]: Measuring battery took %ums\n",__func__,(max17048_end_time-max17048_start_measure_time));
   #endif
-  lipo.sleep();
+  // lipo.sleep();
 #endif
 
   // turn OFF power for I2C devices
