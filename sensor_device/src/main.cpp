@@ -90,7 +90,7 @@
 #include "HomeSpan.h"
 SpanPoint *mainDevice;
 
-typedef struct struct_message          // 24 bytes
+typedef struct struct_message          // 28 bytes
 {
   float md_temp;
   float md_hum;
