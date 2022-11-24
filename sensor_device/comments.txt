@@ -1,3 +1,11 @@
+MAX17048 details:
+1- after reset delay of 200ms is needed otherwise it shows 0V
+2- enable hibernate to have measurements every 45s and low power consumption
+3- no need for quick start  -  not needed rather, MAX17048 can recalculate during the few consecutive measurements (althoug it takes many measurements to get it right or it is like it should be?)
+4- no need for sleep
+
+
+
 s2 new board temp sensor: 68:67:25:24:02:dc
 s2 liligo bridge:         7c:df:a1:0b:dd:0c
 esp32s                    0C:B8:15:CC:9A:D0

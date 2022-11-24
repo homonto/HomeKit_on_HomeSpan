@@ -37,12 +37,12 @@
   - add ORG and FAKE MAC to Captive Portal
 */
 
-#define FW_VERSION          "0.2.0"
+#define FW_VERSION          "0.2.1"
 #define CLIENT              "001-fv"
 
 
-// #define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
-#define DEVICE_ID           2 // S2 - without the box - development -  "homekit-sensor-2"
+#define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
+// #define DEVICE_ID           2 // S2 - without the box - development -  "homekit-sensor-2"
 // #define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
 
 
@@ -1052,12 +1052,9 @@ void setup()
   if (! lipo.begin())
   {
     Serial.printf("[%s]: MAX17048 NOT detected ... Check your wiring or I2C ADDR!\n",__func__);
-    // not good idea
-    // Serial.printf("[%s]: Going to sleep for %ds on ERROR!\n",__func__,(sleeptime_s / 2));
-    // hibernate(true, (sleeptime_s / 2)); // sleep half time on error
   } else
   {
-    // lipo.quickStart();     // not needed rather, MAX17048 can recalculate in the time
+    // lipo.quickStart();     // not needed rather, MAX17048 can recalculate during the few consecutive measurements (althoug it takes many measurements to get it right or it is like it should be?)
     #ifdef DEBUG
       Serial.printf("[%s]: start MAX17048 OK\n",__func__);
     #endif
@@ -1065,6 +1062,7 @@ void setup()
     if (boot_reason != 8)
     {
       // #ifdef DEBUG
+      // RESET is needed otherwise it will show 0V on first measurement and will go to sleep for 24h
         Serial.printf("[%s]: Resetting MAX17048 and applying delay for %dms\n",__func__,MAX17048_DELAY_ON_RESET_MS);
       // #endif
       lipo.reset();
@@ -1424,31 +1422,13 @@ float bat_pct_float = 0.0f;
   #ifdef DEBUG
     Serial.printf("[%s]: Time since start=%dms\n",__func__,(max17048_start_measure_time-max17048_begin_time));
   #endif
-  volts = lipo.getVoltage();
-  bat_pct_float = lipo.getSOC();
-  lipo.getChangeRate();
-  volts = lipo.getVoltage();
-  bat_pct_float = lipo.getSOC();
 
-  // Serial.printf("[%s]: Battery %% org=%0.2f%\n",__func__,bat_pct_float);
+  volts = lipo.getVoltage();
+  bat_pct_float = lipo.getSOC();
   u_int8_t bat_pct = round(bat_pct_float);
   if (bat_pct > 100) bat_pct=100;
-
-  // Serial.printf("[%s]: Battery %% adjusted=%d%\n",__func__,bat_pct);
-
   myData.md_bat=bat_pct;
 
-  // volts = 0.9;   // for testing only
-  if (volts < 1)
-  {
-    long delay_time = (MAX17048_DELAY_ON_RESET_MS-(max17048_start_measure_time-max17048_begin_time));
-    if (delay_time > 0)
-    {
-      Serial.printf("[%s]: Delaying to initialise MAX17048 for =%ums\n",__func__,delay_time);
-      delay(delay_time);
-    }
-    volts = lipo.getVoltage();
-  }
   #ifdef DEBUG
     Serial.printf("[%s]: Battery=%0.2fV\n",__func__,volts);
     Serial.printf("[%s]: Low battery threshold=%0.2fV, Minimum battery threshold=%0.2f\n",__func__,LOW_BATTERY_VOLTS,MINIMUM_VOLTS);
@@ -1473,7 +1453,7 @@ float bat_pct_float = 0.0f;
     unsigned max17048_end_time = millis();
     Serial.printf("[%s]: Measuring battery took %ums\n",__func__,(max17048_end_time-max17048_start_measure_time));
   #endif
-  // lipo.sleep();
+  lipo.enableHibernate();     // measurement every 45s
 #endif
 
   // turn OFF power for I2C devices
