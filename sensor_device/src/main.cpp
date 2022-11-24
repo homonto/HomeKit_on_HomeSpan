@@ -37,7 +37,7 @@
   - add ORG and FAKE MAC to Captive Portal
 */
 
-#define FW_VERSION          "0.3.0"
+#define FW_VERSION          "0.3.1"
 #define CLIENT              "001-fv"
 
 
@@ -544,13 +544,46 @@ void connect_wifi()
 // blinking in rtos
 void led_blink(void *pvParams)
 {
-  #if defined (ERROR_RED_LED_GPIO) // and defined (ERROR_RED_LED_GPIO)
-    while (1) {
-        digitalWrite(ERROR_RED_LED_GPIO,LOW);
-        vTaskDelay(50/portTICK_RATE_MS);
-        digitalWrite(ERROR_RED_LED_GPIO,HIGH);
-        vTaskDelay(50/portTICK_RATE_MS);
+  int delay_ms = 60;
+  #if defined(ERROR_RED_LED_GPIO) and defined(ACT_BLUE_LED_GPIO)
+    while(1)
+    {
+      // both low
+      digitalWrite(ERROR_RED_LED_GPIO,LOW);
+      digitalWrite(ACT_BLUE_LED_GPIO,LOW);
+
+      // delay
+      vTaskDelay(delay_ms/portTICK_RATE_MS);
+
+      // red high
+      digitalWrite(ERROR_RED_LED_GPIO,HIGH);
+
+      // delay
+      vTaskDelay(delay_ms/portTICK_RATE_MS);
+
+      // both low
+      digitalWrite(ERROR_RED_LED_GPIO,LOW);
+      digitalWrite(ACT_BLUE_LED_GPIO,LOW);
+      
+      // delay
+      vTaskDelay(delay_ms/portTICK_RATE_MS);
+
+      // blue high
+      digitalWrite(ACT_BLUE_LED_GPIO,HIGH);
+
+      // delay
+      vTaskDelay(delay_ms/portTICK_RATE_MS);
     }
+  #else 
+    #if defined (ERROR_RED_LED_GPIO) // and defined (ERROR_RED_LED_GPIO)
+      while (1) 
+      {
+        digitalWrite(ERROR_RED_LED_GPIO,LOW);
+        vTaskDelay(delay_ms/portTICK_RATE_MS);
+        digitalWrite(ERROR_RED_LED_GPIO,HIGH);
+        vTaskDelay(delay_ms/portTICK_RATE_MS);
+      }
+    #endif
   #endif
 }
 // blinking in rtos END
@@ -942,7 +975,7 @@ void cp_timer( TimerHandle_t cp_timer_handle )
 
 void check_charging()
 {
-
+  #if defined(POWER_GPIO) and defined(CHARGING_GPIO)
   /*
     - both GPIO must be PULLUP as LOW is active from TP4056
     - LEDs on TP4056 are NOT needed if PULL_UP both GPIO
@@ -969,6 +1002,7 @@ void check_charging()
     #ifdef DEBUG
       Serial.printf("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
     #endif
+  #endif
 }
 
 
