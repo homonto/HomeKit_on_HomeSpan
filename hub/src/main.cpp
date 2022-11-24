@@ -80,7 +80,7 @@
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.3.0"     // only numbers here!
+#define BRIDGE_FW                 "0.3.1"     // only numbers here!
 // BRIDGE END
 
 // macros
@@ -492,7 +492,10 @@ struct RemoteBattery : Service::BatteryService
 
       if (charging_received)
       {
-        charging_state->setVal(md_charging_value);
+        if (md_charging_value > 0)
+          charging_state->setVal(1);
+        else 
+          charging_state->setVal(0);
       }
       LOG1("[%s]: Battery data from sensor %s on device %s: battery level=%d%%, low_battery=%d, charging=%d\n",__func__,name,macAddress,bat_value_pct,low_bat,md_charging_value);
       
