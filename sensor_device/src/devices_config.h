@@ -13,7 +13,7 @@
   #define USE_MAX17048                1     // use "0" to disable
   #define USE_SHT31                   1     // use "0" to disable
   #define USE_TSL2561                 1     // use "0" to disable
-  #define LOW_BATTERY_VOLTS           3.7            3.7   // low battery warning
+  #define LOW_BATTERY_VOLTS           3.7   // low battery warning
   #define MINIMUM_VOLTS               3.3   // device is going to forced 12 hour sleep to conserve battery
   #define SLEEP_TIME_S                300    // seconds, 300 = 5min
   uint8_t FixedMACAddress[] =         {0x1a, 0x01, 0x01, 0x01, 0x01, 0x01};
