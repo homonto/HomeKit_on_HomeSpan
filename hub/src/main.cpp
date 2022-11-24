@@ -80,7 +80,7 @@
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.2.0"     // only numbers here!
+#define BRIDGE_FW                 "0.3.0"     // only numbers here!
 // BRIDGE END
 
 // macros
@@ -101,7 +101,7 @@
 
 // END of SETTING
 
-typedef struct struct_message          // 24 bytes
+typedef struct struct_message          // 28 bytes
 {
   float md_temp;
   float md_hum;
@@ -109,24 +109,26 @@ typedef struct struct_message          // 24 bytes
   uint8_t md_bat;
   char md_version[10];
   uint8_t md_mcu_model;
+  uint8_t md_charging;
 } struct_message;
 
 struct_message myData;
-
 // aux variables
 float temperature_value;
 float humidity_value;
 float light_value;
-uint8_t low_bat              = 1; 
+uint8_t low_bat           = 1; 
 uint8_t bat_value_pct;
 char md_version_value[10];
-uint8_t md_mcu_model_value   = 0;
+uint8_t md_mcu_model_value= 0;
 const char models[10][15]        = {"other", "ESP32", "ESP32-S2", "ESP32-S3", "ESP32-C3"}; //    // [number of models][length of string] - used only in Serial not on HomeKit
+uint8_t md_charging_value = 0;
 
 bool temperature_received = false;
 bool humidity_received    = false;
 bool light_received       = false;
 bool bat_received         = false;
+bool charging_received    = false;
 
 
 bool device_timeout = false;      // used to send fault = 1 for each sensor
@@ -298,19 +300,21 @@ struct UpdateData : Service::AccessoryInformation
       #endif
 
       LOG0("\n[%s]: Update from device=%s...\n",__func__,macAddress);
-      temperature_value     = myData.md_temp;     // update temperature
+      temperature_value     = myData.md_temp;       // update temperature
       temperature_received  = true;
-      humidity_value        = myData.md_hum;      // update humidity
+      humidity_value        = myData.md_hum;        // update humidity
       humidity_received     = true;
-      light_value           = myData.md_light;    // update light
+      light_value           = myData.md_light;      // update light
       light_received        = true;
       md_mcu_model_value    = myData.md_mcu_model;  // update model
-      bat_value_pct         = myData.md_bat;    // update battery percent
+      bat_value_pct         = myData.md_bat;        // update battery percent
       bat_received          = true;
+      md_charging_value     = myData.md_charging;   // update charging
+      charging_received     = true;
 
       snprintf(md_version_value,sizeof(md_version_value),"%s",myData.md_version); // update version
       
-      LOG0("[%s]:  Raw data from device %s just arrived: temp=%0.2fC, hum=%0.2f%%, light=%0.2flx, bat_value_pct=%d%%, model=%d (%s), version=%s\n",__func__,name,temperature_value,humidity_value,light_value,bat_value_pct,md_mcu_model_value,models[md_mcu_model_value],md_version_value);
+      LOG0("[%s]:  Raw data from device %s just arrived: temp=%0.2fC, hum=%0.2f%%, light=%0.2flx, bat_value_pct=%d%%, charging=%d, model=%d (%s), version=%s\n",__func__,name,temperature_value,humidity_value,light_value,bat_value_pct,md_charging_value,md_mcu_model_value,models[md_mcu_model_value],md_version_value);
 
       md_version->setString(md_version_value);                    // update version
 
@@ -484,8 +488,15 @@ struct RemoteBattery : Service::BatteryService
         low_bat=0;
       }
       low_battery->setVal(low_bat);  
-      LOG1("[%s]: Battery data from sensor %s on device %s: battery level=%d%%, low_battery=%d\n",__func__,name,macAddress,bat_value_pct,low_bat);
       bat_received = false;
+
+      if (charging_received)
+      {
+        charging_state->setVal(md_charging_value);
+      }
+      LOG1("[%s]: Battery data from sensor %s on device %s: battery level=%d%%, low_battery=%d, charging=%d\n",__func__,name,macAddress,bat_value_pct,low_bat,md_charging_value);
+      
+      charging_received = false;
 
       // should RED LED blink when new message comes? maybe not..
       #ifdef BLINK_ERROR_LED_ON_RECEIVED_DATA
