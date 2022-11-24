@@ -42,7 +42,7 @@
   #define SLEEP_TIME_S                300    // seconds, 300 = 5min
   uint8_t FixedMACAddress[] =         {0x1a, 0x01, 0x01, 0x01, 0x01, 0x02};
 
-  #pragma message "compilation for: DEVICE_ID=1, ESP32-C3, " HOSTNAME
+  #pragma message "compilation for: DEVICE_ID=1, ESP32-S2, " HOSTNAME
 // ---------------------------------------------------------------------------------------------------
 
 #elif DEVICE_ID == 3
