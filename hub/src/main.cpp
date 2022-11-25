@@ -80,7 +80,7 @@
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.3.2"     // only numbers here!
+#define BRIDGE_FW                 "0.3.3"     // only numbers here!
 // BRIDGE END
 
 // macros
@@ -649,6 +649,10 @@ void setup()
   WiFi.macAddress(mac_new);
   snprintf(mac_new_char, sizeof(mac_new_char), "%02x:%02x:%02x:%02x:%02x:%02x",mac_new[0], mac_new[1], mac_new[2], mac_new[3], mac_new[4], mac_new[5]);
   Serial.printf("[%s]: NEW MAC: %s\n",__func__,mac_new_char);
+
+  char serial_number[36];
+  snprintf(serial_number,sizeof(serial_number),"%s_%s",mac_new_char,mac_org_char);
+  Serial.printf("[%s]: Bridge SN: %s\n",__func__,serial_number);
   // change MAC END
 
   // start checking charging
@@ -727,7 +731,8 @@ void setup()
 
 // BRIDGE:
   new SpanAccessory();
-    new DEV_Identify(HOSTNAME,MANUFACTURER,ORG_BRIDGE_MAC,MODEL,BRIDGE_FW,IDENTIFY_BLINKS);
+    // new DEV_Identify(HOSTNAME,MANUFACTURER,ORG_BRIDGE_MAC,MODEL,BRIDGE_FW,IDENTIFY_BLINKS);
+    new DEV_Identify(HOSTNAME,MANUFACTURER,serial_number,MODEL,BRIDGE_FW,IDENTIFY_BLINKS);
     new UpdateBattery();
       
 // DEVICE 1
