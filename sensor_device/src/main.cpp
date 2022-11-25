@@ -37,7 +37,7 @@
   - add ORG and FAKE MAC to Captive Portal
 */
 
-#define FW_VERSION          "0.3.2"
+#define FW_VERSION          "0.3.4"
 #define CLIENT              "001-fv"
 
 
@@ -163,6 +163,9 @@ void do_esp_restart();
 void led_blink(void *pvParams);
 void cp_timer( TimerHandle_t xTimer );
 void check_charging();
+void do_esp_sleep();
+void increase_boot_count();
+void reset_boot_count();
 
 // CAPTIVE PORTAL
 #include <nvs_flash.h>
@@ -236,7 +239,7 @@ class CaptiveRequestHandler : public AsyncWebHandler {
 void reset_wifi_credentials()
 {
   Serial.printf("[%s]: Storring old configuration data...\n",__func__);
-  preferences.begin("wifi-secrets", false);
+  preferences.begin("wifi-secrets", false);     // read/write
 
   old_ssid = preferences.getString("rec_ssid", "Sample_SSID");
   old_channel = preferences.getString("rec_channel", "12");
@@ -508,7 +511,7 @@ void StartCaptivePortal() {
 // CONNECT WIFI USING CAPTIVE PORTAL
 void connect_wifi()
 {
-  preferences.begin("wifi-secrets", false);
+  preferences.begin("wifi-secrets", false);       // read/write
   is_setup_done = preferences.getBool("is_setup_done", false);
   ssid = preferences.getString("rec_ssid", "Sample_SSID");
   channel = preferences.getString("rec_channel", "12");
@@ -694,7 +697,7 @@ void do_update()
 
   } else
   {
-    Serial.printf("[%s]: FW update failed - reason: %d\nRESTARTING - FW update failed\n\n",__func__,update_firmware_status);
+    Serial.printf("[%s]: FW update failed - reason: %d\n",__func__,update_firmware_status);
     #ifdef ERROR_RED_LED_GPIO
       sos(ERROR_RED_LED_GPIO);
     #elif defined(ACT_BLUE_LED_GPIO)
@@ -799,8 +802,11 @@ int update_firmware_prepare()
 }
 // update firmware END
 
-void hibernate(bool force, int final_sleeping_time_s) // force = true -> wake up only on timer, false->also on GPIO if defined (Motion or FW)
+void hibernate(bool force, int final_sleeping_time_s) // force = true -> wake up only on timer, false->also on GPIO if defined
 {
+  // wake up on timer...
+  esp_sleep_enable_timer_wakeup(final_sleeping_time_s * uS_TO_S_FACTOR);
+
   esp_deep_sleep_disable_rom_logging();       // it does not display welcome message - shorter time to wake up
   esp_sleep_pd_config(ESP_PD_DOMAIN_XTAL,         ESP_PD_OPTION_OFF);
   esp_sleep_pd_config(ESP_PD_DOMAIN_RTC8M,         ESP_PD_OPTION_OFF);
@@ -814,10 +820,10 @@ void hibernate(bool force, int final_sleeping_time_s) // force = true -> wake up
 
   if (force) // used on error // used when battery too low - sleep for 1h to avoid battery depletion
   {
-    // esp_sleep_enable_timer_wakeup(SLEEP_TIME_H_BATTERY_EMPTY * 3600 * uS_TO_S_FACTOR);
-    // Serial.printf("[%s]: going to sleep for %d hour(s) to save battery\n",__func__,SLEEP_TIME_H_BATTERY_EMPTY);
+    Serial.printf("[%s]: FORCED HIBERNATION WITHOUT WAKE UP ON PIN PRESSED: going to sleep for %d seconds (heartbeat)\n",__func__, final_sleeping_time_s);
     // Serial.printf("[%s]: Bye...\n========= E N D =========\n",__func__);
     // esp_deep_sleep_start();
+    do_esp_sleep();
     #ifdef ERROR_RED_LED_GPIO
       sos(ERROR_RED_LED_GPIO);
     #elif defined(ACT_BLUE_LED_GPIO)
@@ -826,94 +832,36 @@ void hibernate(bool force, int final_sleeping_time_s) // force = true -> wake up
   }
 
   #ifdef DEBUG
-    #ifdef MOTION_SENSOR_GPIO
-      Serial.printf("[%s]: MOTION_SENSOR_GPIO (to wake up device)=%d\n",__func__,MOTION_SENSOR_GPIO);
-    #endif
     #ifdef FW_UPGRADE_GPIO
       Serial.printf("[%s]: FW_UPGRADE_GPIO (to wake up device)=%d\n",__func__,FW_UPGRADE_GPIO);
     #endif
   #endif
   uint64_t bitmask_dec;
 
-  // https://randomnerdtutorials.com/esp32-deep-sleep-arduino-ide-wake-up-sources/ for ext0 and ext1 examples
-  #ifdef MOTION_SENSOR_GPIO
-                  // if (motion)
-                  // // when motion detected we don't allow second wakup on motion - first cooling time only or FW update
-                  // {
-                  //   //send ESP to deep unconditional sleep for predefined time -  wake up on timer (cooling period)
-                  //   esp_sleep_enable_timer_wakeup(sleeptime_s * uS_TO_S_FACTOR);
-                  //   //... or on GPIO ext1 (FW update)
-                  //   #ifdef FW_UPGRADE_GPIO //if FW_UPGRADE_GPIO  defined, wake up on it
-                  //     bitmask_dec = pow(2,FW_UPGRADE_GPIO);
-                  //     #ifdef DEBUG
-                  //       Serial.printf("[%s]: bitmask_dec (FW_UPGRADE_GPIO) in dec=%ju\n",__func__,bitmask_dec);
-                  //     #endif
-                  //     // ESP32-C3
-                  //     #if (BOARD_TYPE == 4)
-                  //       {
-                  //         esp_deep_sleep_enable_gpio_wakeup(bitmask_dec, ESP_GPIO_WAKEUP_GPIO_HIGH);
-                  //       }
-                  //     #else
-                  //       {
-                  //         esp_sleep_enable_ext1_wakeup(bitmask_dec, ESP_EXT1_WAKEUP_ANY_HIGH);
-                  //       }
-                  //     #endif
+// https://randomnerdtutorials.com/esp32-deep-sleep-arduino-ide-wake-up-sources/ for ext0 and ext1 examples
 
-                  //   #endif
+  //send ESP to deep unconditional sleep for predefined time -  wake up on timer...(heartbeat)
+  // esp_sleep_enable_timer_wakeup(final_sleeping_time_s * uS_TO_S_FACTOR);
 
-                  //   Serial.printf("[%s]: going to sleep for %d seconds  (cooling time)\n",__func__, sleeptime_s);
-                  // } else
-                  // {
-                  //   //send ESP to deep unconditional sleep for predefined time -  wake up on timer...(heartbeat)
-                  //   esp_sleep_enable_timer_wakeup(sleeptime_s * uS_TO_S_FACTOR);
-                  //   //... or on GPIO ext1 (PIR motion detected) or FW_UPGRADE_GPIO
-                  //   #ifdef FW_UPGRADE_GPIO //if FW_UPGRADE_GPIO  defined, wake up on it or on PIR - actually FW_UPGRADE_GPIO is obligatory
-                  //     bitmask_dec = pow(2,FW_UPGRADE_GPIO) + pow(2,MOTION_SENSOR_GPIO);
-                  //     #ifdef DEBUG
-                  //       Serial.printf("[%s]: bitmask_dec (FW_UPGRADE_GPIO + MOTION_SENSOR_GPIO) in dec=%ju\n",__func__,bitmask_dec);
-                  //     #endif
-                  //   #else //if FW_UPGRADE_GPIO not defined, wake up only on PIR
-                  //     bitmask_dec = pow(2,MOTION_SENSOR_GPIO);
-                  //     #ifdef DEBUG
-                  //       Serial.printf("[%s]: bitmask_dec=2^GPIO in dec=%d\n",__func__,bitmask_dec);
-                  //     #endif
-                  //   #endif
-                  //   // ESP32-C3
-                  //   #if (BOARD_TYPE == 4)
-                  //     {
-                  //       esp_deep_sleep_enable_gpio_wakeup(bitmask_dec, ESP_GPIO_WAKEUP_GPIO_HIGH);
-                  //     }
-                  //   #else
-                  //     {
-                  //       esp_sleep_enable_ext1_wakeup(bitmask_dec, ESP_EXT1_WAKEUP_ANY_HIGH);
-                  //     }
-                  //   #endif
-
-                  //   Serial.printf("[%s]: going to sleep until next motion detected\n",__func__);
-                  //   Serial.printf("[%s]:  or for %ds (heartbeat)\n",__func__,SLEEP_TIME_S);
-                  // }
-  #else
-    //send ESP to deep unconditional sleep for predefined time -  wake up on timer...(heartbeat)
-    esp_sleep_enable_timer_wakeup(final_sleeping_time_s * uS_TO_S_FACTOR);
-    //... or on GPIO ext1 FW_UPGRADE_GPIO
-    #ifdef FW_UPGRADE_GPIO //if FW_UPGRADE_GPIO  defined, wake up on it or on PIR - actually FW_UPGRADE_GPIO is obligatory
-      bitmask_dec = pow(2,FW_UPGRADE_GPIO);
-      #ifdef DEBUG
-        Serial.printf("[%s]: bitmask_dec (FW_UPGRADE_GPIO) in dec=%ju\n",__func__,bitmask_dec);
-      #endif
-      // ESP32-C3
-      #if (BOARD_TYPE == 4)
-        {
-          esp_deep_sleep_enable_gpio_wakeup(bitmask_dec, ESP_GPIO_WAKEUP_GPIO_HIGH);
-        }
-      #else
-        {
-          esp_sleep_enable_ext1_wakeup(bitmask_dec, ESP_EXT1_WAKEUP_ANY_HIGH);
-        }
-      #endif
+  //... or on GPIO ext1 FW_UPGRADE_GPIO
+  #ifdef FW_UPGRADE_GPIO //if FW_UPGRADE_GPIO  defined, wake up on it or on PIR - actually FW_UPGRADE_GPIO is obligatory
+    bitmask_dec = pow(2,FW_UPGRADE_GPIO);
+    #ifdef DEBUG
+      Serial.printf("[%s]: bitmask_dec (FW_UPGRADE_GPIO) in dec=%ju\n",__func__,bitmask_dec);
     #endif
-    Serial.printf("[%s]: going to sleep for %d seconds (heartbeat)\n",__func__, final_sleeping_time_s);
+    // ESP32-C3
+    #if (BOARD_TYPE == 4)
+      {
+        esp_deep_sleep_enable_gpio_wakeup(bitmask_dec, ESP_GPIO_WAKEUP_GPIO_HIGH);
+      }
+    #else
+      {
+        esp_sleep_enable_ext1_wakeup(bitmask_dec, ESP_EXT1_WAKEUP_ANY_HIGH);
+      }
+    #endif
   #endif
+  Serial.printf("[%s]: going to sleep for %d seconds (heartbeat)\n",__func__, final_sleeping_time_s);
+
 
 
     // testing with PPK2 - go to sleep
@@ -925,34 +873,29 @@ void hibernate(bool force, int final_sleeping_time_s) // force = true -> wake up
     digitalWrite(ACT_BLUE_LED_GPIO,LOW);
   #endif
 
-  end_time = millis();
-  if (boot_reason != 8) //timer
-  {
-    work_time = end_time - start_time + (ESP32_BOOT_TIME) + (ESP32_TAIL_TIME) + ESP32_BOOT_TIME_EXTRA;
-  } else                // reset or power on
-  {
-    work_time = end_time - start_time + (ESP32_BOOT_TIME) + (ESP32_TAIL_TIME);
-  }
-  #ifdef DEBUG
-    Serial.printf("[%s]: start_time=%ums, end_time=%ums, work_time=%dms\n",__func__,start_time,end_time,work_time);
-  #else
-    Serial.printf("[%s]: Program finished in %dms\n",__func__,work_time);
-  #endif
-  Serial.printf("========= E N D =========\n");
-  Serial.flush();
-  delay(1);
-  esp_deep_sleep_start();
+  // end_time = millis();
+  // if (boot_reason != 8) //timer
+  // {
+  //   work_time = end_time - start_time + (ESP32_BOOT_TIME) + (ESP32_TAIL_TIME) + ESP32_BOOT_TIME_EXTRA;
+  // } else                // reset or power on
+  // {
+  //   work_time = end_time - start_time + (ESP32_BOOT_TIME) + (ESP32_TAIL_TIME);
+  // }
+  // #ifdef DEBUG
+  //   Serial.printf("[%s]: start_time=%ums, end_time=%ums, work_time=%dms\n",__func__,start_time,end_time,work_time);
+  // #else
+  //   Serial.printf("[%s]: Program finished in %dms at:%u\n",__func__,work_time,millis());
+  // #endif
+  // Serial.printf("========= E N D =========\n");
+  // Serial.flush();
+  // delay(3);
+  // esp_deep_sleep_start();
+  do_esp_sleep();
 }
 
 void do_esp_restart()
 {
   Serial.printf("[%s]: RESTARTING...\n",__func__);
-  // NOT GOOD IDEA TO SOS() WHEN "NORMAL" RESTART I.E. FW UPDATE
-  // #ifdef ERROR_RED_LED_GPIO
-  //   sos(ERROR_RED_LED_GPIO);
-  // #elif defined(ACT_BLUE_LED_GPIO)
-  //   sos(ACT_BLUE_LED_GPIO);
-  // #endif
   #ifdef ERROR_RED_LED_GPIO
     digitalWrite(ERROR_RED_LED_GPIO,LOW);
     delay(10);
@@ -964,6 +907,7 @@ void do_esp_restart()
     digitalWrite(ACT_BLUE_LED_GPIO,HIGH);
     delay(200);
   #endif
+  reset_boot_count();
   ESP.restart();
 }
 
@@ -1005,13 +949,76 @@ void check_charging()
   #endif
 }
 
+void do_esp_sleep()
+{
+  if (boot_reason != 8) // reason was NOT timer: reset or power on
+  {
+    reset_boot_count();
+    end_time = millis();
+    work_time = end_time - start_time + (ESP32_BOOT_TIME) + (ESP32_TAIL_TIME) + ESP32_BOOT_TIME_EXTRA;
+  } else                // reason was TIMER (deepsleep) or FW GPIO
+  {
+    increase_boot_count();
+    end_time = millis();
+    work_time = end_time - start_time + (ESP32_BOOT_TIME) + (ESP32_TAIL_TIME);
+  }
+  #ifdef DEBUG
+    Serial.printf("[%s]: start_time=%ums, end_time=%ums, work_time=%dms\n",__func__,start_time,end_time,work_time);
+  #else
+    Serial.printf("[%s]: Program finished in %dms\n",__func__,work_time);
+  #endif
 
+  Serial.printf("========= E N D =========\n");
+  esp_deep_sleep_start();
+}
+
+void increase_boot_count()
+{
+  String bootCount_str;
+  unsigned long bootCount;
+  unsigned long start;
+  start=millis();
+  preferences.begin("wifi-secrets", false);     // read/write
+  bootCount_str = preferences.getString("bootcount", "0");
+  bootCount = bootCount_str.toInt();
+
+  ++bootCount;
+
+  preferences.putString("bootcount",String(bootCount));
+  preferences.end();
+  Serial.printf("[%s]: Bootcount=%d\n",__func__,bootCount);
+
+  // Serial.printf("[%s]: Bootcount time=%dms\n",__func__,millis()-start);
+}
+
+void reset_boot_count()
+{
+  preferences.begin("wifi-secrets", false);     // read/write
+  preferences.putString("bootcount","1");
+  preferences.end();
+  Serial.printf("[%s]: Bootcount reset to 1\n",__func__);
+  delay(1);
+}
+
+  
+// void fw_version_full(char const *date, char *buff) { 
+//     int month, day, year;
+//     static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+//     sscanf(date, "%s %d %d", buff, &day, &year);
+//     month = (strstr(month_names, buff)-month_names)/3+1;
+//     sprintf(buff, "%s_%d%02d%02d",FW_VERSION, year, month, day);
+// }
 
 void setup()
 {
   start_time = millis();
   Serial.begin(115200);
   delay(1); //50
+  
+  // char test[50];
+  // fw_version_full(__DATE__,test);
+  // Serial.printf("%s",test);
+
   Serial.printf("\n======= S T A R T =======\n");
   Serial.printf("%s, version: %s, compiled on: %s\n",HOSTNAME,FW_VERSION,COMPILATION_TIME);
   #ifdef DEBUG
@@ -1214,12 +1221,9 @@ void setup()
     // 2 = not in use
     case ESP_SLEEP_WAKEUP_EXT0:
     {
-      #ifdef DEBUG
-        Serial.printf("external signal using RTC_IO (motion detected)\n");
-      #endif
       break;
     }
-    // 3 = fw update (FW_UPGRADE_GPIO) or motion detected (MOTION_SENSOR_GPIO) - not for ESP32-C3!
+    // 3 = fw update (FW_UPGRADE_GPIO) - not for ESP32-C3!
     #if (BOARD_TYPE != 4)
       case ESP_SLEEP_WAKEUP_EXT1:
       {
@@ -1240,12 +1244,6 @@ void setup()
               Serial.printf("[%s]: debouncing for %dms\n",__func__,DEBOUNCE_MS);
             #endif
             delay(DEBOUNCE_MS);
-          }
-        #endif
-        #ifdef MOTION_SENSOR_GPIO
-          if (wakeup_gpio == MOTION_SENSOR_GPIO)
-          {
-            motion = true;
           }
         #endif
         break;
@@ -1300,13 +1298,6 @@ void setup()
             #endif
             delay(DEBOUNCE_MS);
           }
-        #endif
-        #ifdef MOTION_SENSOR_GPIO
-          if (wakeup_gpio == MOTION_SENSOR_GPIO)
-          {
-            motion = true;
-          }
-          break;
         #endif
         break;
       }
@@ -1413,9 +1404,6 @@ void setup()
     } else
     {
       Serial.printf("[%s]: Starting SHT31...FAILED\n",__func__);
-      // not good idea
-      // Serial.printf("[%s]: Going to sleep for %ds on ERROR!\n",__func__,(sleeptime_s / 2));
-      // hibernate(true, (sleeptime_s / 2)); // sleep half time on error
     }
     #ifdef DEBUG
       unsigned sht31_end_time = millis();
@@ -1471,9 +1459,6 @@ void setup()
         // #ifdef DEBUG
           // Serial.printf("FAILED - cannot start\n");
           Serial.printf("[%s]: Starting TSL2561...FAILED - cannot power up\n",__func__);
-          // not good idea
-          // Serial.printf("[%s]: Going to sleep for %ds on ERROR!\n",__func__,(sleeptime_s / 2));
-          // hibernate(true, (sleeptime_s / 2)); // sleep half time on error
         // #endif
       }
     }
@@ -1505,11 +1490,15 @@ void setup()
 
     #ifdef DEBUG
       Serial.printf("[%s]: Battery=%0.2fV\n",__func__,volts);
-      Serial.printf("[%s]: Low battery threshold=%0.2fV, Minimum battery threshold=%0.2f\n",__func__,LOW_BATTERY_VOLTS,MINIMUM_VOLTS);
+      Serial.printf("[%s]: Low battery threshold=%0.2fV, Minimum battery threshold=%0.2fV\n",__func__,LOW_BATTERY_VOLTS,MINIMUM_VOLTS);
     #endif
     if (volts <= LOW_BATTERY_VOLTS)
+          // testing only
+          // if (volts <= 6)
     {
       if (volts <= MINIMUM_VOLTS)
+          // testing only
+          // if (volts <= 5)
       {
         Serial.printf("[%s]: Battery empty (%0.2fV) - going to sleep for %ds\n",__func__,volts,(24*60*60));
         hibernate(true, (SLEEP_TIME_H_BATTERY_EMPTY*60*60)); // 24 hours sleep if battery empty
@@ -1552,6 +1541,9 @@ void setup()
   // other info
   myData.md_mcu_model = BOARD_TYPE;
   snprintf(myData.md_version,sizeof(myData.md_version),"%s",FW_VERSION);
+
+  // custom FirmwareRevision is not supported ;-(
+  // snprintf(myData.md_version,sizeof(myData.md_version),"%s",test);
 
   Serial.printf("\n[%s]: Temperature=%0.2fC, Humidity=%0.2f%%, Light=%0.2flx, Battery percent=%d%%, Volts=%0.2fV\n",__func__,myData.md_temp,myData.md_hum,myData.md_light,myData.md_bat,volts);
   Serial.printf("[%s]: Charging=%d (%s), MCU model=%d, version=%s\n\n",__func__,myData.md_charging, charging_states[charging_int], myData.md_mcu_model,myData.md_version);
