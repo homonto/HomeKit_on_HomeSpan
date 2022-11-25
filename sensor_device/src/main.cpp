@@ -37,16 +37,16 @@
   - add ORG and FAKE MAC to Captive Portal
 */
 
-#define FW_VERSION          "0.3.1"
+#define FW_VERSION          "0.3.2"
 #define CLIENT              "001-fv"
 
 
 // #define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
-#define DEVICE_ID           2 // S2 - without the box - development -  "homekit-sensor-2"
-// #define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
+// #define DEVICE_ID           2 // S2 - without the box - development -  "homekit-sensor-2"
+#define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
 
 
-// #define DEBUG
+#define DEBUG
 
 // ****************  EVERYTHONG BELOW ALL IS COMMON FOR ANY ESP32 *********************
 // #define WIFI_CHANNEL                8   // in my house
@@ -58,7 +58,7 @@
 #define CP_TIMEOUT_S                180  // CP and AP will terminate after this time
 #define SLEEP_TIME_H_BATTERY_EMPTY  24  // sleep hours when battery empty
 #define MAX17048_DELAY_ON_RESET_MS  200 // as per datasheet: needed before next reading from MAX17048 after reset, only in use when reset/battery change
-
+#define DEBOUNCE_MS                 200 // wait time after pressing FW GPIO
 #include <Arduino.h>
 #include "devices_config.h"
 #include "passwords.h"
@@ -1237,9 +1237,9 @@ void setup()
             fw_update = true;
             #ifdef DEBUG
               Serial.printf("[%s]: woke up on FW button pressed\n",__func__);
-              Serial.printf("[%s]: debouncing for 100ms\n",__func__);
+              Serial.printf("[%s]: debouncing for %dms\n",__func__,DEBOUNCE_MS);
             #endif
-            delay(100);
+            delay(DEBOUNCE_MS);
           }
         #endif
         #ifdef MOTION_SENSOR_GPIO
@@ -1296,9 +1296,9 @@ void setup()
             fw_update = true;
             #ifdef DEBUG
               Serial.printf("[%s]: woke up on FW button pressed\n",__func__);
-              Serial.printf("[%s]: debouncing for 100ms\n",__func__);
+              Serial.printf("[%s]: debouncing for %dms\n",__func__,DEBOUNCE_MS);
             #endif
-            delay(100);
+            delay(DEBOUNCE_MS);
           }
         #endif
         #ifdef MOTION_SENSOR_GPIO
