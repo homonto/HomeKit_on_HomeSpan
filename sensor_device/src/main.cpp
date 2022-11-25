@@ -42,11 +42,11 @@
 
 
 // #define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
-// #define DEVICE_ID           2 // S2 - without the box - development -  "homekit-sensor-2"
-#define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
+#define DEVICE_ID           2 // S2 - without the box - development -  "homekit-sensor-2"
+// #define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
 
 
-#define DEBUG
+// #define DEBUG
 
 // ****************  EVERYTHONG BELOW ALL IS COMMON FOR ANY ESP32 *********************
 // #define WIFI_CHANNEL                8   // in my house
