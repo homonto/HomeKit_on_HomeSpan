@@ -80,7 +80,7 @@
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.3.1"     // only numbers here!
+#define BRIDGE_FW                 "0.3.2"     // only numbers here!
 // BRIDGE END
 
 // macros
@@ -697,6 +697,7 @@ void setup()
     } else
     {
       // lipo.quickStart();     // not needed rather, MAX17048 can recalculate in the time
+      lipo.disableHibernate();
       #ifdef DEBUG
         Serial.printf("[%s]: start MAX17048 OK\n",__func__);
       #endif
