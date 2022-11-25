@@ -31,11 +31,11 @@
 
 // SETTINGS:
 
-// #define DEVICE_ID           1 // ESP32S first bridge
-// #define DEVICE_ID           2 // ESP32-S3 second bridge
-#define DEVICE_ID           3 // ESP32-S2 third bridge
+// #define DEVICE_ID       0    // ESP32-S2 - DONT USE IT - NOT ENOUGH MEMORY!
+#define DEVICE_ID       1    // ESP32-S  - MAIN UNIT
+// #define DEVICE_ID       2    // ESP32-S3 - TEST
 
-// #define DEBUG
+#define DEBUG
 
 #define OTA_ACTIVE                // OTA webserver
 
@@ -45,6 +45,7 @@
 #include <esp_wifi.h>
 #include "HomeSpan.h"
 #include "passwords.h"
+#include <Wire.h>
 #ifdef OTA_ACTIVE
   #include <AsyncTCP.h>
   #include <ESPAsyncWebServer.h>
@@ -57,9 +58,34 @@
   #warning "OTA_ACTIVE NOT defined"
 #endif
 
+// Firmware update
+char mac_new_char_short[18];
+#include <HTTPClient.h>
+#include <Update.h>
+#if   (BOARD_TYPE == 1)
+  #define FW_BIN_FILE "hub.esp32.bin"
+#elif (BOARD_TYPE == 2)
+  #define FW_BIN_FILE "hub.esp32s2.bin"
+#elif (BOARD_TYPE == 3)
+  #define FW_BIN_FILE "hub.esp32s3.bin"
+#elif (BOARD_TYPE == 4)
+  #define FW_BIN_FILE "hub.esp32c3.bin"
+#else
+  #error "FW update defined only for ESP32, ESP32-S2 and ESP32-S3 boards"
+#endif
+
+HTTPClient firmware_update_client;
+int fw_totalLength = 0;
+int fw_currentLength = 0;
+bool perform_update_firmware=false;
+int update_progress=0;
+int old_update_progress=0;
+bool blink_led_status=false;
+bool fw_update = false;
+// Firmware update END
+
 // MAX17048 - battery fuel gauge, I2C
 #if (USE_MAX17048 == 1)
-  #include <Wire.h>
   #include <SparkFun_MAX1704x_Fuel_Gauge_Arduino_Library.h>
   SFE_MAX1704X lipo(MAX1704X_MAX17048);
 #endif
@@ -80,8 +106,10 @@
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.3.3"     // only numbers here!
+#define BRIDGE_FW                 "0.4.0"     // only numbers here!
 // BRIDGE END
+
+#define CLIENT                    "001-fv"
 
 // macros
 #define SKETCH_VERSION            BRIDGE_FW 
@@ -89,7 +117,7 @@
 #define NTP_SERVER                "pool.ntp.org"
 #define NTP_SERVER_TIMEOUT_S      30
 #define LOG_LEVEL                 0
-#define UPDATE_TIMEOUT_S          900   // 900 = 15min, after this time Bridge reports failure of the device
+#define UPDATE_TIMEOUT_S          900   // 900 = 15min, after this time Bridge reports failure of SENSOR (REMOTE) DEVICE 
 
 //use one of them below: STATUS LED or ERROR LED  - blinks when new message comes from DEVICES
 // #define BLINK_STATUS_LED_ON_RECEIVED_DATA   
@@ -98,6 +126,11 @@
 #define BATTERY_INTERVAL_S        5   // in seconds, how often to update battery status and charging status of the hub on HomeKit (battery/charging is measured every second)
 #define LOW_BATTERY_THRESHOLD     30  // in % to start complaining (low battery status = 1)
 #define IDENTIFY_BLINKS           10  // number of blinks when identify is called (hub only)
+
+#if (BOARD_TYPE == 2)
+  #error "ESP32-S2 does NOT have enough memory for FW update!!!"
+  #error "choose anothe board or remove this error to continue" 
+#endif
 
 // END of SETTING
 
@@ -153,6 +186,10 @@ const char charging_states[3][5] = {"NC", "ON", "FULL"};  // "OFF"};
 void led_blink(void *pvParams);
 void check_volts(void*z);
 void check_charging(void*z);
+// fw update
+void do_update();
+void updateFirmware(uint8_t *data, size_t len);
+int update_firmware_prepare();
 
 
 // blinking in rtos
@@ -172,94 +209,232 @@ void led_blink(void *pvParams)
 
 void check_volts(void*z)
 {
-  while(1)
-    {
-      volts   = lipo.getVoltage();
-      bat_pct = lipo.getSOC();
-      if (bat_pct>100) bat_pct=100; // we don't need crazy % here
-      if (bat_pct<0)   bat_pct=0;
-
-      LOG2("[%s]: Hub volts: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
-      if (bat_pct < LOW_BATTERY_THRESHOLD)
+  #if (USE_MAX17048 == 1)
+    while(1)
       {
-         #ifdef DEBUG
-          Serial.printf("[%s]: Volts too low: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
-        #endif
-        // blink LEDs in task, if not yet blinking
-        if (!blinking)
+        volts   = lipo.getVoltage();
+        bat_pct = lipo.getSOC();
+        if (bat_pct>100) bat_pct=100; // we don't need crazy % here
+        if (bat_pct<0)   bat_pct=0;
+
+        LOG2("[%s]: Hub volts: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
+        if (bat_pct < LOW_BATTERY_THRESHOLD)
         {
-          xReturned_led_blink = xTaskCreatePinnedToCore(led_blink, "led_blink", 5000, NULL, 1, &led_blink_handle, CONFIG_ARDUINO_RUNNING_CORE);
-          if( xReturned_led_blink != pdPASS )
+          #ifdef DEBUG
+            Serial.printf("[%s]: Volts too low: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
+          #endif
+          // blink LEDs in task, if not yet blinking
+          if (!blinking)
           {
-            Serial.printf("[%s]: CANNOT create led_blink task\n",__func__);
+            xReturned_led_blink = xTaskCreatePinnedToCore(led_blink, "led_blink", 5000, NULL, 1, &led_blink_handle, CONFIG_ARDUINO_RUNNING_CORE);
+            if( xReturned_led_blink != pdPASS )
+            {
+              Serial.printf("[%s]: CANNOT create led_blink task\n",__func__);
+            } else 
+            {
+              #ifdef DEBUG
+                Serial.printf("[%s]: Task led_blink created\n",__func__);
+              #endif
+              blinking = true;
+            }
           } else 
+          // blink LEDs already blinking
           {
             #ifdef DEBUG
-              Serial.printf("[%s]: Task led_blink created\n",__func__);
+              Serial.printf("[%s]: Task led_blink ALREADY created\n",__func__);
             #endif
-            blinking = true;
           }
-        } else 
-        // blink LEDs already blinking
+        } else
         {
-           #ifdef DEBUG
-            Serial.printf("[%s]: Task led_blink ALREADY created\n",__func__);
+          #ifdef DEBUG
+            Serial.printf("[%s]: Volts OK: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
           #endif
+          if (blinking)
+          {
+            #ifdef DEBUG
+              Serial.printf("[%s]: Disabling blinking LEDs\n",__func__);
+              Serial.printf("[%s]: DELETING TASK\n",__func__);
+            #endif
+            vTaskDelete( led_blink_handle );
+            blinking = false;
+          }
         }
-      } else
-      {
-         #ifdef DEBUG
-          Serial.printf("[%s]: Volts OK: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
-        #endif
-        if (blinking)
-        {
-           #ifdef DEBUG
-            Serial.printf("[%s]: Disabling blinking LEDs\n",__func__);
-            Serial.printf("[%s]: DELETING TASK\n",__func__);
-          #endif
-          vTaskDelete( led_blink_handle );
-          blinking = false;
-        }
-      }
 
-      vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+      }
+  #endif
 }
 
 // check charging
 void check_charging(void*z)
 {
-  while(1)
-  {
-  /*
-    - both GPIO must be PULLUP as LOW is active from TP4056
-    - LEDs on TP4056 are NOT needed if PULL_UP both GPIO
-    
-    #define POWER_GPIO                38  // GREEN, STDB PIN6 on TP4056, LOW on CHARGED (LED ON),       comment out if not in use - don't use "0" here
-    #define CHARGING_GPIO             39  // RED,   CHRG PIN7 on TP4056, LOW during CHARGING (LED ON),  comment out if not in use - don't use "0" here
-    
-    truth table:
-    NC:               POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP)
-    CHARGING:         POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO LOW     
-    FULL (CHARGED):   POWER_GPIO LOW              CHARGING_GPIO HIGH (PULLUP)
-    OFF (DISABLED):   POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP) ???? - not checked yet
+  #if defined(CHARGING_GPIO) and defined(POWER_GPIO)
+    while(1)
+    {
+    /*
+      - both GPIO must be PULLUP as LOW is active from TP4056
+      - LEDs on TP4056 are NOT needed if PULL_UP both GPIO
+      
+      #define POWER_GPIO                38  // GREEN, STDB PIN6 on TP4056, LOW on CHARGED (LED ON),       comment out if not in use - don't use "0" here
+      #define CHARGING_GPIO             39  // RED,   CHRG PIN7 on TP4056, LOW during CHARGING (LED ON),  comment out if not in use - don't use "0" here
+      
+      truth table:
+      NC:               POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP)
+      CHARGING:         POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO LOW     
+      FULL (CHARGED):   POWER_GPIO LOW              CHARGING_GPIO HIGH (PULLUP)
+      OFF (DISABLED):   POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP) ???? - not checked yet
 
-    */
+      */
 
-    uint8_t power_gpio_state    = digitalRead(POWER_GPIO);
-    uint8_t charging_gpio_state = digitalRead(CHARGING_GPIO);
+      uint8_t power_gpio_state    = digitalRead(POWER_GPIO);
+      uint8_t charging_gpio_state = digitalRead(CHARGING_GPIO);
 
-    if ((power_gpio_state)   and (charging_gpio_state))   charging_int = 0; // NC
-    if ((power_gpio_state)   and (!charging_gpio_state))  charging_int = 1; // ON/CHARGING
-    if ((!power_gpio_state)  and (charging_gpio_state))   charging_int = 2; // FULL/CHARGED
-    // if ((digitalRead(POWER_GPIO) == 1) and (digitalRead(CHARGING_GPIO) == 1)) charging_int = 3; // OFF ??
+      if ((power_gpio_state)   and (charging_gpio_state))   charging_int = 0; // NC
+      if ((power_gpio_state)   and (!charging_gpio_state))  charging_int = 1; // ON/CHARGING
+      if ((!power_gpio_state)  and (charging_gpio_state))   charging_int = 2; // FULL/CHARGED
+      // if ((digitalRead(POWER_GPIO) == 1) and (digitalRead(CHARGING_GPIO) == 1)) charging_int = 3; // OFF ??
 
-    LOG2("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
+      LOG2("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
 
-    vTaskDelay(pdMS_TO_TICKS(1000));
-  }
+      vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+  #endif
 }
 
+
+// update firmware
+// FW upgrade wrapper
+void do_update()
+{
+  Serial.printf("[%s]: FW UPDATE starting...\n",__func__);
+  int update_firmware_status = -1;
+  update_firmware_status=update_firmware_prepare();
+  if (update_firmware_status == 0)
+  {
+    Serial.printf("[%s]: RESTARTING - FW update SUCCESSFULL\n\n",__func__);
+    // blink slowly when FW upgrade successfull
+    for (int i=0;i<3;i++)
+    {
+      #ifdef ERROR_RED_LED_GPIO
+        digitalWrite(ERROR_RED_LED_GPIO,LOW);
+        delay(100);
+        digitalWrite(ERROR_RED_LED_GPIO,HIGH);
+        delay(30);
+      #elif defined(STATUS_LED_GPIO)
+        digitalWrite(STATUS_LED_GPIO,LOW);
+        delay(100);
+        digitalWrite(STATUS_LED_GPIO,HIGH);
+        delay(30);
+        // digitalWrite(ERROR_RED_LED_GPIO,LOW);
+      #endif
+    }
+
+  } else
+  {
+    Serial.printf("[%s]: FW update failed - reason: %d\n",__func__,update_firmware_status);
+    #ifdef ERROR_RED_LED_GPIO
+      // sos(ERROR_RED_LED_GPIO);
+    #elif defined(STATUS_LED_GPIO)
+      // sos(STATUS_LED_GPIO);
+    #endif
+  }
+  ESP.restart();
+}
+
+// real update
+void updateFirmware(uint8_t *data, size_t len)
+{
+  // blink ERROR_RED_LED_GPIO or...
+  #ifdef ERROR_RED_LED_GPIO
+    if (blink_led_status) {
+      blink_led_status=LOW;
+      digitalWrite(ERROR_RED_LED_GPIO,blink_led_status);
+    } else {
+      blink_led_status=HIGH;
+      digitalWrite(ERROR_RED_LED_GPIO,blink_led_status);
+    }
+  #else
+    // ...blink STATUS_LED_GPIO
+    #ifdef STATUS_LED_GPIO
+      if (blink_led_status) {
+        blink_led_status=LOW;
+        digitalWrite(STATUS_LED_GPIO,blink_led_status);
+      } else {
+        blink_led_status=HIGH;
+        digitalWrite(STATUS_LED_GPIO,blink_led_status);
+      }
+    #endif
+  #endif
+
+  Update.write(data, len);
+  fw_currentLength += len;
+  old_update_progress=update_progress;
+  update_progress=(fw_currentLength * 100) / fw_totalLength;
+  if (update_progress>old_update_progress){
+    if (update_progress % 5 == 0){ //it prints every 5%
+      Serial.printf("[%s]: FW update: %d%%\n",__func__,update_progress);
+    }
+  }
+  // if current length of written firmware is not equal to total firmware size, repeat
+  if(fw_currentLength != fw_totalLength) return;
+  Update.end(true);
+  Serial.printf("\n[%s]: Update Success, Total Size: %d bytes\n",__func__,fw_currentLength);
+}
+
+// download from webserver
+int update_firmware_prepare()
+{
+  char firmware_file[255];
+  snprintf(firmware_file,sizeof(firmware_file),"%s/%s/%s",UPDATE_FIRMWARE_HOST,mac_new_char_short,FW_BIN_FILE);
+
+  fw_totalLength=0;
+  fw_currentLength=0;
+  Serial.printf("[%s]: uploading file: %s\n",__func__,firmware_file);
+  firmware_update_client.begin(firmware_file);
+  int resp = firmware_update_client.GET();
+  Serial.printf("[%s]: Response: %d\n",__func__,resp);
+  // If file is reachable, start downloading
+  if(resp == 200){
+    // get length of document (is -1 when Server sends no Content-Length header)
+    fw_totalLength = firmware_update_client.getSize();
+    // transfer to local variable
+    int len = fw_totalLength;
+    // this is required to start firmware update process
+    Update.begin(UPDATE_SIZE_UNKNOWN);
+    Serial.printf("[%s]: FW Size: %lu bytes\n",__func__,fw_totalLength);
+
+    // create buffer for read
+    uint8_t buff[128] = { 0 };
+    // get tcp stream
+    WiFiClient * stream = firmware_update_client.getStreamPtr();
+    // read all data from server
+    Serial.printf("[%s]: Updating firmware progress:\n",__func__);
+    while(firmware_update_client.connected() && (len > 0 || len == -1))
+    {
+      // get available data size
+      size_t size = stream->available();
+      if(size) {
+        // read up to 128 byte
+        int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
+        // pass to function
+        updateFirmware(buff, c);
+        if(len > 0) {
+           len -= c;
+        }
+      }
+      delay(1);
+      }
+  }else
+  {
+    Serial.printf("[%s]: Cannot download firmware file. Only HTTP response 200: OK is supported. Double check firmware location.\n",__func__);
+    Serial.printf("[%s]: firmware update prepare UNSUCESSFUL\n",__func__);
+    return resp;
+  }
+  firmware_update_client.end();
+  Serial.printf("[%s]: firmware update prepare SUCESSFULL\n",__func__);
+  return 0;
+}
+// update firmware END
 
 // REMOTE DEVICES 
 struct UpdateData : Service::AccessoryInformation
@@ -329,7 +504,6 @@ struct UpdateData : Service::AccessoryInformation
   }
 };
 
-
 struct RemoteTempSensor : Service::TemperatureSensor
 {
   SpanCharacteristic *temp;
@@ -372,7 +546,6 @@ struct RemoteTempSensor : Service::TemperatureSensor
   }
 };
 
-
 struct RemoteHumSensor : Service::HumiditySensor
 {
   SpanCharacteristic *hum;
@@ -414,7 +587,6 @@ struct RemoteHumSensor : Service::HumiditySensor
   }
 };
 
-
 struct RemoteLightSensor : Service::LightSensor
 {
   SpanCharacteristic *lux;
@@ -455,7 +627,6 @@ struct RemoteLightSensor : Service::LightSensor
   }
 
 };
-
 
 struct RemoteBattery : Service::BatteryService
 {
@@ -519,11 +690,10 @@ struct RemoteBattery : Service::BatteryService
     }
   }
 };
-
 // REMOTE DEVICES END
 
 
-
+// BRIDGE
 struct UpdateBattery : Service::BatteryService
 {
   SpanCharacteristic *battery_level;
@@ -543,26 +713,34 @@ struct UpdateBattery : Service::BatteryService
     
     if (battery_level->timeVal()>(BATTERY_INTERVAL_S * 1000))
     {
-      LOG1("[%s]: Hub battery status: volts=%0.2fV, percent=%0.2f%%, charging=%d(%s)\n",__func__,volts,bat_pct,charging_int,charging_states[charging_int]);
+      #if defined(CHARGING_GPIO) and defined(POWER_GPIO)
+        LOG1("[%s]: Hub battery status: volts=%0.2fV, percent=%0.2f%%, charging=%d(%s)\n",__func__,volts,bat_pct,charging_int,charging_states[charging_int]);
 
-      battery_level->setVal(bat_pct);  
-      if ((charging_int == 1) or (charging_int == 2))
-      {
-        charging_state->setVal(1);
-      }
-      else 
-      {
-        charging_state->setVal(0);
-      }
-      
+        battery_level->setVal(bat_pct);  
+        if ((charging_int == 1) or (charging_int == 2))
+        {
+          charging_state->setVal(1);
+        }
+        else 
+        {
+          charging_state->setVal(0);
+        }
+      // #else // don't enable - it floods the screen
+      //   LOG0("[%s]: Checking charging DISABLED!\n",__func__);
+      #endif 
+
+      #if (USE_MAX17048 == 1)
       if (bat_pct < LOW_BATTERY_THRESHOLD)
-      {
-        low_battery->setVal(1);  
-        LOG0("[%s]: Hub battery CRITICAL status: volts=%0.2fV, percent=%0.2f%%, charging=%d(%s)\n",__func__,volts,bat_pct,charging_int,charging_states[charging_int]);
-      } else 
-      {
-        low_battery->setVal(0);  
-      }
+        {
+          low_battery->setVal(1);  
+          LOG0("[%s]: Hub battery CRITICAL status: volts=%0.2fV, percent=%0.2f%%, charging=%d(%s)\n",__func__,volts,bat_pct,charging_int,charging_states[charging_int]);
+        } else 
+        {
+          low_battery->setVal(0);  
+        }
+      // #else // don't enable - it floods the screen
+      //   LOG0("[%s]: Checking battery DISABLED!\n",__func__);
+      #endif
     }
   }
 };
@@ -610,15 +788,29 @@ struct DEV_Identify : Service::AccessoryInformation
         return false;
     #endif
     LOG0("[%s]: hub identified\n",__func__);
+
+
+    unsigned long free_mem = ESP.getFreeHeap();
+    LOG0("[%s]: free heap=%u bytes\n",__func__,free_mem);
+    if (free_mem > 66000) 
+    {
+      do_update();
+    } else
+    {
+      LOG0("[%s]: NOT ENOUGH MEMORY FOR FW UPDATE!!!\n",__func__);
+      return false;
+    }
     return true;
   }
 
 };
-
+// BRIDGE END
 void setup() 
 {
   Serial.begin(115200);
   Serial.printf("\n======= S T A R T =======\n");
+  unsigned long free_mem = ESP.getFreeHeap();
+  LOG0("[%s]: START: free heap=%u bytes\n",__func__,free_mem);
 
   #ifdef ERROR_RED_LED_GPIO
     pinMode(ERROR_RED_LED_GPIO,OUTPUT);
@@ -650,8 +842,22 @@ void setup()
   snprintf(mac_new_char, sizeof(mac_new_char), "%02x:%02x:%02x:%02x:%02x:%02x",mac_new[0], mac_new[1], mac_new[2], mac_new[3], mac_new[4], mac_new[5]);
   Serial.printf("[%s]: NEW MAC: %s\n",__func__,mac_new_char);
 
+  snprintf(mac_new_char_short, sizeof(mac_new_char_short), "%02x%02x%02x%02x%02x%02x",FixedMACAddress[0], FixedMACAddress[1], FixedMACAddress[2], FixedMACAddress[3], FixedMACAddress[4], FixedMACAddress[5]);
+
+
+  String mac_org_str = String(mac_org_char);
+  String mac_new_str = String(mac_new_char);
+
+  mac_org_str.replace(":",""); mac_org_str.remove(0,6);
+  mac_new_str.replace(":",""); mac_new_str.remove(0,6);
+
+  // Serial Number structure: 
+  // from:  new MAC_old MAC long versions
+  // from:  1aff01010103_f412fa40deac
+  // to:    010103_40deac - short versions
+  // last 6 char of new MAC_last 6 char of new MAC
   char serial_number[36];
-  snprintf(serial_number,sizeof(serial_number),"%s_%s",mac_new_char,mac_org_char);
+  snprintf(serial_number,sizeof(serial_number),"%s_%s",mac_new_str,mac_org_str);
   Serial.printf("[%s]: Bridge SN: %s\n",__func__,serial_number);
   // change MAC END
 
@@ -731,10 +937,11 @@ void setup()
 
 // BRIDGE:
   new SpanAccessory();
-    // new DEV_Identify(HOSTNAME,MANUFACTURER,ORG_BRIDGE_MAC,MODEL,BRIDGE_FW,IDENTIFY_BLINKS);
     new DEV_Identify(HOSTNAME,MANUFACTURER,serial_number,MODEL,BRIDGE_FW,IDENTIFY_BLINKS);
     new UpdateBattery();
-      
+
+// add accessories only for DEVICE_ID = 1 as of now - don't mess while testing other boards
+#if (DEVICE_ID == 1)      
 // DEVICE 1
   new SpanAccessory();
     new UpdateData(DEVICE_ID_1_NAME,DEVICE_ID_1);                 
@@ -758,6 +965,7 @@ void setup()
     new RemoteHumSensor("Humidity Sensor",DEVICE_ID_3);        
     new RemoteLightSensor("Light Sensor",DEVICE_ID_3);  
     new RemoteBattery(DEVICE_ID_3_NAME,DEVICE_ID_3);    
+#endif
 
   // magic starts here
   homeSpan.begin(Category::Bridges,HOSTNAME,HOSTNAME);
@@ -767,7 +975,7 @@ void setup()
     strlcpy(ota_user, OTA_USER, sizeof(ota_user));
     strlcpy(ota_password, OTA_PASSWORD, sizeof(ota_password));
     Serial.printf("[%s]: Enabling OTA:...\n",__func__);
-    Serial.printf("[%s]: user=%s, password=%s\n",__func__,ota_user,ota_password);
+    Serial.printf("[%s]: user=%s, password=%s, URL=http://%s.local:8080/update\n",__func__,ota_user,ota_password,HOSTNAME);
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
     {
       String introtxt = "This is device "+String(DEVICE_ID) +", Version: " + String(BRIDGE_FW);
@@ -780,6 +988,7 @@ void setup()
   #endif
   //OTA in Setup END
 
+  Serial.printf("[%s]: Setup finished\n\n",__func__);
 }
 
 
