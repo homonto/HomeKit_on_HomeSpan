@@ -1,9 +1,6 @@
 2022-11-26:
-<<<<<<< HEAD
 - 0.4.2 - fw_version, serial_number: both changed on bridge, fw_version has date/time of compilation, serial_number has both macs
-=======
 - 0.4.1 - FW update for BRIDGE finished
->>>>>>> c6d85fd6f610fbc2e20a89e3be4634ea1f90e97b
 2022-11-25:
 - 0.4.1 - FW update for BRIDGE finished
 - 0.4.0 -
