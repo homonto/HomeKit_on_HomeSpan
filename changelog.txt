@@ -1,10 +1,11 @@
-
+2022-11-26:
+- 0.4.1 - FW update for BRIDGE finished
 2022-11-25:
 - 0.4.0 - 
         - FW update from web on press "ID" in Eve for HomeKit (check how to in Home.app)
         - ESP32-S2 discontinued - not enough memory
         - new SN introduced: last 6 char of new MAC and last 6 char of old MAC
-- 0.3.4 - bootcount implemented
+- 0.3.4 - bootcount implemented on SENSOR DEVICES
 - 0.3.2 - charging showing on HomeKit, battery level on HomeKit
 2022-11-23:
 - 0.2.0 - added battery to sensors (in %)
