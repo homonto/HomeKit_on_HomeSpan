@@ -1,4 +1,10 @@
 2022-11-26:
+- 0.4.5 - 
+        - consolidate checking volts and checking charging in one task
+        - adding DEBUG_XTASKS to estimate stack size for vTasks
+        - optimizing stack size for led_blink() and check_volts
+        - change xTaskCreatePinnedToCore to xTaskCreate - let software decide which core to use
+        - add: board_build.partitions = min_spiffs.csv to platformio.ini to enable Inspector in PIO
 - 0.4.4 - free heap checking in check_volts(), restart ESP if < MIN_ALLOWED_HEAP_SIZE (20kB)
 - 0.4.3 - fw_version reworked again: "0.4.3" - only numbers here, major: 0-99, minor: 0-9, patch: 0-9, so 0.4.3 would be 43, no seconds in fw_version
 - 0.4.2 - fw_version, serial_number: both changed on bridge, fw_version has date/time of compilation, serial_number has both macs

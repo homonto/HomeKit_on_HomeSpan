@@ -36,6 +36,7 @@
 // #define DEVICE_ID       2    // ESP32-S3 - TEST
 
 // #define DEBUG
+// #define DEBUG_XTASKS
 
 #define OTA_ACTIVE                // OTA webserver
 
@@ -104,7 +105,7 @@ bool fw_update = false;
 // DEVICES END
 
 // BRIDGE firmware:
-#define BRIDGE_FW                 "0.4.4"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
+#define BRIDGE_FW                 "0.4.5"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
 
 // folder on web with firmware files
 #define CLIENT                    "001-fv"
@@ -190,7 +191,6 @@ const char charging_states[3][5] = {"NC", "ON", "FULL"};  // "OFF"};
 // declarations
 void led_blink(void *pvParams);
 void check_volts(void*z);
-void check_charging(void*z);
 void do_restart_esp(const char *message);
 void change_mac();
 void make_serial_number(char *org_mac, char*new_mac, char *serial_number);
@@ -205,12 +205,23 @@ int update_firmware_prepare();
 // blinking in rtos
 void led_blink(void *pvParams) 
 {
+  // inspecting stack size for tasks
+  #ifdef DEBUG_XTASKS
+    UBaseType_t uxHighWaterMark;
+    uxHighWaterMark = uxTaskGetStackHighWaterMark( NULL );
+  #endif
+
   #if defined (ERROR_RED_LED_GPIO) // and defined (ERROR_RED_LED_GPIO)
     while (1) {
         digitalWrite(ERROR_RED_LED_GPIO,HIGH);
         vTaskDelay(50/portTICK_RATE_MS);
         digitalWrite(ERROR_RED_LED_GPIO,LOW);
         vTaskDelay(50/portTICK_RATE_MS);
+
+        #ifdef DEBUG_XTASKS
+          uxHighWaterMark = uxTaskGetStackHighWaterMark( NULL );
+          LOG1("[%s]: led_blink uxHighWaterMark=%d\n",__func__,uxHighWaterMark);
+        #endif
     }
   #endif
 }
@@ -225,109 +236,119 @@ void do_restart_esp(const char *message)
   #if defined (STATUS_LED_GPIO) 
     digitalWrite(STATUS_LED_GPIO,LOW);
   #endif
-  LOG0("\n[%s]: %s\n\nRESTARTING ESP!\n\n",__func__,message);
+  LOG0("\n[%s]: %s\n\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n          RESTARTING ESP!\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n",__func__,message);
   ESP.restart();
 }
 
 void check_volts(void*z)
 {
   unsigned long free_mem;
-  #if (USE_MAX17048 == 1)
+
+  // inspecting stack size for tasks
+  #ifdef DEBUG_XTASKS
+    UBaseType_t uxHighWaterMark;
+    uxHighWaterMark = uxTaskGetStackHighWaterMark( NULL );
+  #endif
+
     while(1)
       {
+        // check free memory
         free_mem = ESP.getFreeHeap();
         LOG1("[%s]: Free heap=%u bytes\n",__func__,free_mem);
         if (free_mem < MIN_ALLOWED_HEAP_SIZE) do_restart_esp("Free heap too small!");
-        volts   = lipo.getVoltage();
-        bat_pct = lipo.getSOC();
-        if (bat_pct>100) bat_pct=100; // we don't need crazy % here
-        if (bat_pct<0)   bat_pct=0;
 
-        LOG2("[%s]: Bridge volts: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
-        if (bat_pct < LOW_BATTERY_THRESHOLD)
-        {
-          #ifdef DEBUG
-            Serial.printf("[%s]: Volts too low: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
-          #endif
-          // blink LEDs in task, if not yet blinking
-          if (!blinking)
+        // check battery
+        #if (USE_MAX17048 == 1)
+          volts   = lipo.getVoltage();
+          bat_pct = lipo.getSOC();
+          if (bat_pct>100) bat_pct=100; // we don't need crazy % here
+          if (bat_pct<0)   bat_pct=0;
+
+          LOG2("[%s]: Bridge volts: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
+          if (bat_pct < LOW_BATTERY_THRESHOLD)
           {
-            xReturned_led_blink = xTaskCreatePinnedToCore(led_blink, "led_blink", 5000, NULL, 1, &led_blink_handle, CONFIG_ARDUINO_RUNNING_CORE);
-            if( xReturned_led_blink != pdPASS )
+            #ifdef DEBUG
+              Serial.printf("[%s]: Volts too low: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
+            #endif
+            // blink LEDs in task, if not yet blinking
+            if (!blinking)
             {
-              Serial.printf("[%s]: CANNOT create led_blink task\n",__func__);
+              xReturned_led_blink = xTaskCreate(led_blink, "led_blink", 1800, NULL, 1, &led_blink_handle);
+              if( xReturned_led_blink != pdPASS )
+              {
+                Serial.printf("[%s]: CANNOT create led_blink task\n",__func__);
+              } else 
+              {
+                #ifdef DEBUG
+                  Serial.printf("[%s]: Task led_blink created\n",__func__);
+                #endif
+                blinking = true;
+              }
             } else 
+            // blink LEDs already blinking
             {
               #ifdef DEBUG
-                Serial.printf("[%s]: Task led_blink created\n",__func__);
+                Serial.printf("[%s]: Task led_blink ALREADY created\n",__func__);
               #endif
-              blinking = true;
             }
-          } else 
-          // blink LEDs already blinking
+          } else
           {
             #ifdef DEBUG
-              Serial.printf("[%s]: Task led_blink ALREADY created\n",__func__);
+              Serial.printf("[%s]: Volts OK: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
             #endif
+            if (blinking)
+            {
+              #ifdef DEBUG
+                Serial.printf("[%s]: Disabling blinking LEDs\n",__func__);
+                Serial.printf("[%s]: DELETING TASK\n",__func__);
+              #endif
+              vTaskDelete( led_blink_handle );
+              blinking = false;
+            }
           }
-        } else
-        {
+        #endif
+        // check battery END
+
+        // check charging
+        #if defined(CHARGING_GPIO) and defined(POWER_GPIO)
+        /*
+          - both GPIO must be PULLUP as LOW is active from TP4056
+          - LEDs on TP4056 are NOT needed if PULL_UP both GPIO
+          
+          #define POWER_GPIO                38  // GREEN, STDB PIN6 on TP4056, LOW on CHARGED (LED ON),       comment out if not in use - don't use "0" here
+          #define CHARGING_GPIO             39  // RED,   CHRG PIN7 on TP4056, LOW during CHARGING (LED ON),  comment out if not in use - don't use "0" here
+          
+          truth table:
+          NC:               POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP)
+          CHARGING:         POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO LOW     
+          FULL (CHARGED):   POWER_GPIO LOW              CHARGING_GPIO HIGH (PULLUP)
+          OFF (DISABLED):   POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP) ???? - not checked yet
+
+          */
+
+          uint8_t power_gpio_state    = digitalRead(POWER_GPIO);
+          uint8_t charging_gpio_state = digitalRead(CHARGING_GPIO);
+
+          if ((power_gpio_state)   and (charging_gpio_state))   charging_int = 0; // NC
+          if ((power_gpio_state)   and (!charging_gpio_state))  charging_int = 1; // ON/CHARGING
+          if ((!power_gpio_state)  and (charging_gpio_state))   charging_int = 2; // FULL/CHARGED
+          // if ((digitalRead(POWER_GPIO) == 1) and (digitalRead(CHARGING_GPIO) == 1)) charging_int = 3; // OFF ??
+
+          LOG2("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
           #ifdef DEBUG
-            Serial.printf("[%s]: Volts OK: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
+            Serial.printf("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
           #endif
-          if (blinking)
-          {
-            #ifdef DEBUG
-              Serial.printf("[%s]: Disabling blinking LEDs\n",__func__);
-              Serial.printf("[%s]: DELETING TASK\n",__func__);
-            #endif
-            vTaskDelete( led_blink_handle );
-            blinking = false;
-          }
-        }
+        #endif
+        // check charging END
 
         vTaskDelay(pdMS_TO_TICKS(1000));
+
+        #ifdef DEBUG_XTASKS
+          uxHighWaterMark = uxTaskGetStackHighWaterMark( NULL );
+          // Serial.print("check_volts uxHighWaterMark=");Serial.println(uxHighWaterMark);
+          LOG1("[%s]: check_volts uxHighWaterMark=%d\n",__func__,uxHighWaterMark);
+        #endif
       }
-  #endif
-}
-
-// check charging
-void check_charging(void*z)
-{
-  #if defined(CHARGING_GPIO) and defined(POWER_GPIO)
-    while(1)
-    {
-    /*
-      - both GPIO must be PULLUP as LOW is active from TP4056
-      - LEDs on TP4056 are NOT needed if PULL_UP both GPIO
-      
-      #define POWER_GPIO                38  // GREEN, STDB PIN6 on TP4056, LOW on CHARGED (LED ON),       comment out if not in use - don't use "0" here
-      #define CHARGING_GPIO             39  // RED,   CHRG PIN7 on TP4056, LOW during CHARGING (LED ON),  comment out if not in use - don't use "0" here
-      
-      truth table:
-      NC:               POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP)
-      CHARGING:         POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO LOW     
-      FULL (CHARGED):   POWER_GPIO LOW              CHARGING_GPIO HIGH (PULLUP)
-      OFF (DISABLED):   POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP) ???? - not checked yet
-
-      */
-
-      uint8_t power_gpio_state    = digitalRead(POWER_GPIO);
-      uint8_t charging_gpio_state = digitalRead(CHARGING_GPIO);
-
-      if ((power_gpio_state)   and (charging_gpio_state))   charging_int = 0; // NC
-      if ((power_gpio_state)   and (!charging_gpio_state))  charging_int = 1; // ON/CHARGING
-      if ((!power_gpio_state)  and (charging_gpio_state))   charging_int = 2; // FULL/CHARGED
-      // if ((digitalRead(POWER_GPIO) == 1) and (digitalRead(CHARGING_GPIO) == 1)) charging_int = 3; // OFF ??
-
-      LOG2("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
-      #ifdef DEBUG
-        Serial.printf("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
-      #endif
-
-      vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-  #endif
 }
 
 
@@ -876,7 +897,7 @@ struct DEV_Identify : Service::AccessoryInformation
   boolean update()
   { 
     #ifdef ERROR_RED_LED_GPIO    
-        LOG0("[%s]: bridge called to identify itself, blinking ERROR LED...\n",__func__);
+        LOG0("[%s]: bridge called to identify itself, blinking RED LED...\n",__func__);
         for(int i=0;i<nBlinks;i++)
         {
             digitalWrite(ERROR_RED_LED_GPIO,HIGH);
@@ -952,7 +973,7 @@ void setup()
   homeSpan.enableOTA();         // homespan-ota
   homeSpan.enableAutoStartAP(); // AP on startup if no WiFi credentials
   homeSpan.setHostNameSuffix("");;
-  // homeSpan.setStatusAutoOff(5);  // turn OFF LED - not good as no info about the life of bridge then
+  // homeSpan.setStatusAutoOff(5);  // turn OFF LED - not good as no info about the life of bridge then 
 
   // start checking charging
   #if defined(CHARGING_GPIO) and defined(POWER_GPIO)
@@ -961,14 +982,6 @@ void setup()
     #endif
     pinMode(CHARGING_GPIO, INPUT_PULLUP);   // must be PULLUP as TP4056 is Active LOW
     pinMode(POWER_GPIO, INPUT_PULLUP);      // must be PULLUP as TP4056 is Active LOW
-    xReturned_check_charging = xTaskCreatePinnedToCore(check_charging, "check_charging", 5000, NULL, 1, &check_charging_handle, CONFIG_ARDUINO_RUNNING_CORE);
-    if( xReturned_check_charging != pdPASS )
-    {
-      Serial.printf("[%s]: check_charging task not created - restarting in 1s\n",__func__);
-    } else
-    {
-      Serial.printf("[%s]: check_charging task created\n",__func__);
-    }
   #else
     #ifdef DEBUG
       Serial.printf("[%s]: checking CHARGING DISABLED\n",__func__);
@@ -1005,7 +1018,7 @@ void setup()
         Serial.printf("[%s]: start MAX17048 OK\n",__func__);
       #endif
     }
-    xReturned_check_volts = xTaskCreatePinnedToCore(check_volts, "check_volts", 5000, NULL, 1, &check_volts_handle, CONFIG_ARDUINO_RUNNING_CORE);
+    xReturned_check_volts = xTaskCreate(check_volts, "check_volts", 2500, NULL, 1, &check_volts_handle);
     if( xReturned_check_volts != pdPASS )
     {
       Serial.printf("[%s]: check_volts task not created - restarting in 1s\n",__func__);
