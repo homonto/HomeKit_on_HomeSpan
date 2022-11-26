@@ -1,4 +1,5 @@
-
+2022-11-26:
+- 0.4.2 - fw_version, serial_number: both changed on bridge, fw_version has date/time of compilation, serial_number has both macs
 2022-11-25:
 - 0.4.0 - 
         - FW update from web on press "ID" in Eve for HomeKit (check how to in Home.app)

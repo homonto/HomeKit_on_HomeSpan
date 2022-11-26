@@ -35,7 +35,7 @@
 #define DEVICE_ID       1    // ESP32-S  - MAIN UNIT
 // #define DEVICE_ID       2    // ESP32-S3 - TEST
 
-#define DEBUG
+// #define DEBUG
 
 #define OTA_ACTIVE                // OTA webserver
 
@@ -59,7 +59,7 @@
 #endif
 
 // Firmware update
-char mac_new_char_short[18];
+char mac_new_char_short[18]; // to find the path for FW file
 #include <HTTPClient.h>
 #include <Update.h>
 #if   (BOARD_TYPE == 1)
@@ -106,7 +106,7 @@ bool fw_update = false;
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.4.1"     // only numbers here!
+#define BRIDGE_FW                 "0.4.2"     // only numbers here!
 // BRIDGE END
 
 #define CLIENT                    "001-fv"
@@ -157,6 +157,14 @@ uint8_t md_mcu_model_value= 0;
 const char models[10][15]        = {"other", "ESP32", "ESP32-S2", "ESP32-S3", "ESP32-C3"}; //    // [number of models][length of string] - used only in Serial not on HomeKit
 uint8_t md_charging_value = 0;
 
+
+//change_mac variables
+char mac_org_char[22];
+byte mac_org[6];
+char mac_new_char[22];
+byte mac_new[6];
+
+// for data received:
 bool temperature_received = false;
 bool humidity_received    = false;
 bool light_received       = false;
@@ -186,6 +194,11 @@ const char charging_states[3][5] = {"NC", "ON", "FULL"};  // "OFF"};
 void led_blink(void *pvParams);
 void check_volts(void*z);
 void check_charging(void*z);
+void do_restart_esp();
+void change_mac();
+void make_serial_number(char *org_mac, char*new_mac, char *serial_number);
+void make_fw_version(char *buff);
+
 // fw update
 void do_update();
 void updateFirmware(uint8_t *data, size_t len);
@@ -206,6 +219,17 @@ void led_blink(void *pvParams)
 }
 // blinking in rtos END
 
+// restart
+void do_restart_esp()
+{
+  #if defined (ERROR_RED_LED_GPIO) 
+    digitalWrite(ERROR_RED_LED_GPIO,LOW);
+  #endif
+  #if defined (STATUS_LED_GPIO) 
+    digitalWrite(STATUS_LED_GPIO,LOW);
+  #endif
+  ESP.restart();
+}
 
 void check_volts(void*z)
 {
@@ -295,6 +319,9 @@ void check_charging(void*z)
       // if ((digitalRead(POWER_GPIO) == 1) and (digitalRead(CHARGING_GPIO) == 1)) charging_int = 3; // OFF ??
 
       LOG2("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
+      #ifdef DEBUG
+        Serial.printf("[%s]: charging=%s  charging_int=%d  CHARGING_GPIO=%d  POWER_GPIO=%d\n",__func__,charging_states[charging_int],charging_int,charging_gpio_state,power_gpio_state);
+      #endif
 
       vTaskDelay(pdMS_TO_TICKS(1000));
     }
@@ -338,7 +365,8 @@ void do_update()
       // sos(STATUS_LED_GPIO);
     #endif
   }
-  ESP.restart();
+  // 
+  do_restart_esp();
 }
 
 // real update
@@ -435,6 +463,75 @@ int update_firmware_prepare()
   return 0;
 }
 // update firmware END
+
+void change_mac()
+{
+  WiFi.mode(WIFI_STA);
+  WiFi.macAddress(mac_org);
+
+
+  snprintf(mac_org_char, sizeof(mac_org_char), "%02x:%02x:%02x:%02x:%02x:%02x",mac_org[0], mac_org[1], mac_org[2], mac_org[3], mac_org[4], mac_org[5]);
+  Serial.printf("[%s]: OLD MAC: %s\n",__func__,mac_org_char);
+
+  Serial.printf("[%s]: changing MAC...",__func__);
+  if (esp_wifi_set_mac(WIFI_IF_STA, &FixedMACAddress[0]) == ESP_OK) Serial.println("SUCCESSFULL"); else Serial.println("FAILED");
+
+  WiFi.macAddress(mac_new);
+  snprintf(mac_new_char, sizeof(mac_new_char), "%02x:%02x:%02x:%02x:%02x:%02x",mac_new[0], mac_new[1], mac_new[2], mac_new[3], mac_new[4], mac_new[5]);
+  Serial.printf("[%s]: NEW MAC: %s\n",__func__,mac_new_char);
+
+  snprintf(mac_new_char_short, sizeof(mac_new_char_short), "%02x%02x%02x%02x%02x%02x",FixedMACAddress[0], FixedMACAddress[1], FixedMACAddress[2], FixedMACAddress[3], FixedMACAddress[4], FixedMACAddress[5]);
+
+}
+
+void make_serial_number(char *org_mac, char*new_mac, char *buff)
+{
+  String mac_org_str = String(org_mac);
+  String mac_new_str = String(new_mac);
+
+  mac_org_str.replace(":","");
+  mac_new_str.replace(":",""); 
+  mac_new_str.remove(0,6);
+
+  // find the size of the new string formatted
+  size_t nbytes = snprintf(NULL,0,"%s_%s",mac_org_str,mac_new_str) +1;
+
+  // final serial_number in format: "oldmac_6charofnewmac"
+  snprintf(buff,nbytes,"%s_%s",mac_org_str,mac_new_str);
+
+  #ifdef DEBUG
+    Serial.printf("[%s]: serial_number: %s\n",__func__,buff);
+  #endif
+}
+
+void make_fw_version(char *buff)
+{
+  int month, day, year, zh_hour,zh_minute,zh_second, short_y;
+  static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+  // day, year done
+  sscanf(__DATE__, "%s %d %d", buff, &day, &year);
+  // short year
+  short_y=(((year / 10U) % 10)* 10)  + ((year / 1U) % 10);
+  //month done
+  month = (strstr(month_names, buff)-month_names)/3+1;
+  // time
+  String new_time = String(__TIME__);
+  new_time.replace(":"," ");
+  char new2_time[30];
+  snprintf(new2_time,sizeof(new2_time),"%s",new_time);
+  sscanf(new2_time, "%d %d %d", &zh_hour, &zh_minute, &zh_second);
+
+  // FW done: remove dots
+  String new_fw = String(BRIDGE_FW);
+  new_fw.replace(".","");
+
+  // final fw_version in format: FW.DATE.TIME (of compilation)
+  sprintf(buff, "%s.%d%02d%02d.%02d%02d%02d",new_fw, short_y, month, day,zh_hour,zh_minute,zh_second);
+
+  #ifdef DEBUG
+    Serial.printf("[%s]: fw_version: %s\n",__func__,buff);
+  #endif
+}
 
 // REMOTE DEVICES 
 struct UpdateData : Service::AccessoryInformation
@@ -812,11 +909,27 @@ void setup()
   Serial.begin(115200);
   delay(50);
   Serial.printf("\n======= S T A R T =======\n");
+
+  // apply new MAC address
+  change_mac(); // it provides: mac_org_char,  mac_new_char changed globally
+
+  // make new SN char based on old and new MACs
+  char serial_number[20];
+  make_serial_number(mac_org_char,mac_new_char,serial_number);
+
+  // make fw_version char based on BRIDGE_FW and date/time of compilation
+  char fw_version[25];
+  make_fw_version(fw_version);
+
+  // intro
   LOG0("[%s]: HOSTNAME: %s\n",__func__,HOSTNAME);
   LOG0("[%s]: FW VERSION: %s\n",__func__,BRIDGE_FW);
   LOG0("[%s]: COMPILATION TIME: %s %s\n",__func__,__DATE__,__TIME__);
   LOG0("[%s]: BOARD TYPE: %s\n",__func__,MODEL);
   LOG0("[%s]: Free heap=%u bytes\n",__func__,ESP.getFreeHeap());
+
+  LOG0("[%s]: BRIDGE_FW on HomeKit: %s\n",__func__,fw_version);
+  LOG0("[%s]: SERIAL NUMBER: %s\n",__func__,serial_number);
 
   #ifdef ERROR_RED_LED_GPIO
     pinMode(ERROR_RED_LED_GPIO,OUTPUT);
@@ -828,44 +941,6 @@ void setup()
   homeSpan.enableAutoStartAP(); // AP on startup if no WiFi credentials
   homeSpan.setHostNameSuffix("");;
   // homeSpan.setStatusAutoOff(5);  // turn OFF LED - not good as no info about the life of hub then
-
-  // change MAC
-  char mac_org_char[22];
-  byte mac_org[6];
-  char mac_new_char[22];
-  byte mac_new[6];
-
-  WiFi.mode(WIFI_STA);
-  WiFi.macAddress(mac_org);
-
-  snprintf(mac_org_char, sizeof(mac_org_char), "%02x:%02x:%02x:%02x:%02x:%02x",mac_org[0], mac_org[1], mac_org[2], mac_org[3], mac_org[4], mac_org[5]);
-  Serial.printf("[%s]: OLD MAC: %s\n",__func__,mac_org_char);
-
-  Serial.printf("[%s]: changing MAC...",__func__);
-  if (esp_wifi_set_mac(WIFI_IF_STA, &FixedMACAddress[0]) == ESP_OK) Serial.println("SUCCESSFULL"); else Serial.println("FAILED");
-
-  WiFi.macAddress(mac_new);
-  snprintf(mac_new_char, sizeof(mac_new_char), "%02x:%02x:%02x:%02x:%02x:%02x",mac_new[0], mac_new[1], mac_new[2], mac_new[3], mac_new[4], mac_new[5]);
-  Serial.printf("[%s]: NEW MAC: %s\n",__func__,mac_new_char);
-
-  snprintf(mac_new_char_short, sizeof(mac_new_char_short), "%02x%02x%02x%02x%02x%02x",FixedMACAddress[0], FixedMACAddress[1], FixedMACAddress[2], FixedMACAddress[3], FixedMACAddress[4], FixedMACAddress[5]);
-
-
-  String mac_org_str = String(mac_org_char);
-  String mac_new_str = String(mac_new_char);
-
-  mac_org_str.replace(":",""); mac_org_str.remove(0,8);
-  mac_new_str.replace(":",""); mac_new_str.remove(0,8);
-
-  // Serial Number structure: 
-  // from:  new MAC_old MAC long versions
-  // from:  1aff01010103_f412fa40deac
-  // to:    0103_deac - short versions
-  // last 4 char of new MAC_last 4 char of new MAC
-  char serial_number[36];
-  snprintf(serial_number,sizeof(serial_number),"%s_%s",mac_new_str,mac_org_str);
-  Serial.printf("[%s]: Bridge SN: %s\n",__func__,serial_number);
-  // change MAC END
 
   // start checking charging
   #if defined(CHARGING_GPIO) and defined(POWER_GPIO)
@@ -943,7 +1018,8 @@ void setup()
 
 // BRIDGE:
   new SpanAccessory();
-    new DEV_Identify(HOSTNAME,MANUFACTURER,serial_number,MODEL,BRIDGE_FW,IDENTIFY_BLINKS);
+    // new DEV_Identify(HOSTNAME,MANUFACTURER,serial_number,MODEL,BRIDGE_FW,IDENTIFY_BLINKS);
+    new DEV_Identify(HOSTNAME,MANUFACTURER,serial_number,MODEL,fw_version,IDENTIFY_BLINKS);
     new UpdateBattery();
 
 // add accessories only for DEVICE_ID = 1 as of now - don't mess while testing other boards
