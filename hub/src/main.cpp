@@ -63,13 +63,13 @@ char mac_new_char_short[18]; // to find the path for FW file
 #include <HTTPClient.h>
 #include <Update.h>
 #if   (BOARD_TYPE == 1)
-  #define FW_BIN_FILE "hub.esp32.bin"
+  #define FW_BIN_FILE "bridge.esp32.bin"
 #elif (BOARD_TYPE == 2)
-  #define FW_BIN_FILE "hub.esp32s2.bin"
+  #define FW_BIN_FILE "bridge.esp32s2.bin"
 #elif (BOARD_TYPE == 3)
-  #define FW_BIN_FILE "hub.esp32s3.bin"
+  #define FW_BIN_FILE "bridge.esp32s3.bin"
 #elif (BOARD_TYPE == 4)
-  #define FW_BIN_FILE "hub.esp32c3.bin"
+  #define FW_BIN_FILE "bridge.esp32c3.bin"
 #else
   #error "FW update defined only for ESP32, ESP32-S2 and ESP32-S3 boards"
 #endif
@@ -106,7 +106,7 @@ bool fw_update = false;
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.4.2"     // only numbers here!
+#define BRIDGE_FW                 "0.4.3"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9
 // BRIDGE END
 
 #define CLIENT                    "001-fv"
@@ -123,9 +123,9 @@ bool fw_update = false;
 // #define BLINK_STATUS_LED_ON_RECEIVED_DATA   
 #define BLINK_ERROR_LED_ON_RECEIVED_DATA    
 
-#define BATTERY_INTERVAL_S        5   // in seconds, how often to update battery status and charging status of the hub on HomeKit (battery/charging is measured every second)
+#define BATTERY_INTERVAL_S        5   // in seconds, how often to update battery status and charging status of the bridge on HomeKit (battery/charging is measured every second)
 #define LOW_BATTERY_THRESHOLD     30  // in % to start complaining (low battery status = 1)
-#define IDENTIFY_BLINKS           10  // number of blinks when identify is called (hub only)
+#define IDENTIFY_BLINKS           10  // number of blinks when identify is called (bridge only)
 
 #if (BOARD_TYPE == 2)
   #error "ESP32-S2 does NOT have enough memory for FW update!!!"
@@ -241,7 +241,7 @@ void check_volts(void*z)
         if (bat_pct>100) bat_pct=100; // we don't need crazy % here
         if (bat_pct<0)   bat_pct=0;
 
-        LOG2("[%s]: Hub volts: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
+        LOG2("[%s]: Bridge volts: %0.2f, battery percent=%0.2f%%\n",__func__,volts,bat_pct);
         if (bat_pct < LOW_BATTERY_THRESHOLD)
         {
           #ifdef DEBUG
@@ -521,16 +521,32 @@ void make_fw_version(char *buff)
   snprintf(new2_time,sizeof(new2_time),"%s",new_time);
   sscanf(new2_time, "%d %d %d", &zh_hour, &zh_minute, &zh_second);
 
-  // FW done: remove dots
-  String new_fw = String(BRIDGE_FW);
-  new_fw.replace(".","");
+  // macro to char
+  char fw_char[20];
+  snprintf(fw_char,sizeof(fw_char),"%s",BRIDGE_FW);
+  // char to string
+  String fw_str = String(fw_char);
+  // dots to space
+  fw_str.replace("."," ");
+  // string to char
+  snprintf(fw_char,sizeof(fw_char),"%s",fw_str);
+  int major,minor,patch;
+  // digits to int
+  sscanf(fw_char, "%d %d %d", &major, &minor, &patch);
+  // char new2_fw[12];
+  snprintf(fw_char,sizeof(fw_char),"%d",major*100+minor*10+patch);
+  // remove dots
+  // new_fw.replace(".","");
+  Serial.print("fw_char1=");Serial.println(fw_char);
 
-  // final fw_version in format: FW.DATE.TIME (of compilation)
-  sprintf(buff, "%s.%d%02d%02d.%02d%02d%02d",new_fw, short_y, month, day,zh_hour,zh_minute,zh_second);
+  // final fw_version in format: FW.DATE.TIME (of compilation) where FW= major(hundreds)+minor(tens)+patch(units)
+  size_t nbytes = snprintf(NULL,0,"%s.%02d%02d%02d.%02d%02d",fw_char, short_y, month, day,zh_hour,zh_minute)+1;
+  Serial.print("n=");Serial.println(nbytes);
+  snprintf(buff,nbytes,           "%s.%02d%02d%02d.%02d%02d",fw_char, short_y, month, day,zh_hour,zh_minute);
 
-  #ifdef DEBUG
+  // #ifdef DEBUG
     Serial.printf("[%s]: fw_version: %s\n",__func__,buff);
-  #endif
+  // #endif
 }
 
 // REMOTE DEVICES 
@@ -811,7 +827,7 @@ struct UpdateBattery : Service::BatteryService
     if (battery_level->timeVal()>(BATTERY_INTERVAL_S * 1000))
     {
       #if defined(CHARGING_GPIO) and defined(POWER_GPIO)
-        LOG1("[%s]: Hub charging status=%d(%s)\n",__func__,charging_int,charging_states[charging_int]);
+        LOG1("[%s]: Bridge charging status=%d(%s)\n",__func__,charging_int,charging_states[charging_int]);
 
         battery_level->setVal(bat_pct);  
         if ((charging_int == 1) or (charging_int == 2))
@@ -827,11 +843,11 @@ struct UpdateBattery : Service::BatteryService
       #endif 
 
       #if (USE_MAX17048 == 1)
-        LOG1("[%s]: Hub battery status: volts=%0.2fV, percent=%0.2f%%\n",__func__,volts,bat_pct);
+        LOG1("[%s]: Bridge battery status: volts=%0.2fV, percent=%0.2f%%\n",__func__,volts,bat_pct);
         if (bat_pct < LOW_BATTERY_THRESHOLD)
           {
             low_battery->setVal(1);  
-            LOG0("[%s]: Hub battery CRITICAL status: volts=%0.2fV, percent=%0.2f%%, charging=%d(%s)\n",__func__,volts,bat_pct,charging_int,charging_states[charging_int]);
+            LOG0("[%s]: Bridge battery CRITICAL status: volts=%0.2fV, percent=%0.2f%%, charging=%d(%s)\n",__func__,volts,bat_pct,charging_int,charging_states[charging_int]);
           } else 
           {
             low_battery->setVal(0);  
@@ -864,7 +880,7 @@ struct DEV_Identify : Service::AccessoryInformation
   boolean update()
   { 
     #ifdef ERROR_RED_LED_GPIO    
-        LOG0("[%s]: hub called to identify itself, blinking ERROR LED...\n",__func__);
+        LOG0("[%s]: bridge called to identify itself, blinking ERROR LED...\n",__func__);
         for(int i=0;i<nBlinks;i++)
         {
             digitalWrite(ERROR_RED_LED_GPIO,HIGH);
@@ -873,7 +889,7 @@ struct DEV_Identify : Service::AccessoryInformation
             delay(50);
         }
     #elif defined(STATUS_LED_GPIO)
-        LOG0("[%s]: hub called to identify, blinking status LED...\n",__func__);
+        LOG0("[%s]: bridge called to identify, blinking status LED...\n",__func__);
         for(int i=0;i<nBlinks;i++)
         {
             digitalWrite(STATUS_LED_GPIO,HIGH);
@@ -885,7 +901,7 @@ struct DEV_Identify : Service::AccessoryInformation
         LOG1("[%s]: no LED defined - failed\n",__func__);
         return false;
     #endif
-    LOG0("[%s]: hub identified\n",__func__);
+    LOG0("[%s]: bridge identified\n",__func__);
 
 
     unsigned long free_mem = ESP.getFreeHeap();
@@ -917,8 +933,9 @@ void setup()
   char serial_number[20];
   make_serial_number(mac_org_char,mac_new_char,serial_number);
 
-  // make fw_version char based on BRIDGE_FW and date/time of compilation
-  char fw_version[25];
+  // make fw_version char based on BRIDGE_FW and date/time of compilation in format: (major-hundreds)(minor-tens)(patch-units).yymmdd.hhmm
+  // BRIDGE_FW 1.2.3 would be: 123, BRIDGE_FW 12.3.4 would be 1234
+  char fw_version[20];
   make_fw_version(fw_version);
 
   // intro
@@ -940,7 +957,7 @@ void setup()
   homeSpan.enableOTA();         // homespan-ota
   homeSpan.enableAutoStartAP(); // AP on startup if no WiFi credentials
   homeSpan.setHostNameSuffix("");;
-  // homeSpan.setStatusAutoOff(5);  // turn OFF LED - not good as no info about the life of hub then
+  // homeSpan.setStatusAutoOff(5);  // turn OFF LED - not good as no info about the life of bridge then
 
   // start checking charging
   #if defined(CHARGING_GPIO) and defined(POWER_GPIO)
