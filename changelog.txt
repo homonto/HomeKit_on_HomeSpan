@@ -1,4 +1,5 @@
 2022-11-26:
+- 0.4.4 - free heap checking in check_volts(), restart ESP if < MIN_ALLOWED_HEAP_SIZE (20kB)
 - 0.4.3 - fw_version reworked again: "0.4.3" - only numbers here, major: 0-99, minor: 0-9, patch: 0-9, so 0.4.3 would be 43, no seconds in fw_version
 - 0.4.2 - fw_version, serial_number: both changed on bridge, fw_version has date/time of compilation, serial_number has both macs
 2022-11-25:

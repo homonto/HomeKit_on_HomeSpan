@@ -59,7 +59,6 @@
 #endif
 
 // Firmware update
-char mac_new_char_short[18]; // to find the path for FW file
 #include <HTTPClient.h>
 #include <Update.h>
 #if   (BOARD_TYPE == 1)
@@ -104,20 +103,19 @@ bool fw_update = false;
 // #define DEVICE_FW                 "0.1.1"
 // DEVICES END
 
-// BRIDGE
-// firmware:
-#define BRIDGE_FW                 "0.4.3"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9
-// BRIDGE END
+// BRIDGE firmware:
+#define BRIDGE_FW                 "0.4.4"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
 
+// folder on web with firmware files
 #define CLIENT                    "001-fv"
 
 // macros
-#define SKETCH_VERSION            BRIDGE_FW 
 #define MANUFACTURER              "PAPIO LTD"
 #define NTP_SERVER                "pool.ntp.org"
 #define NTP_SERVER_TIMEOUT_S      30
 #define LOG_LEVEL                 0
 #define UPDATE_TIMEOUT_S          900   // 900 = 15min, after this time Bridge reports failure of SENSOR (REMOTE) DEVICE 
+#define MIN_ALLOWED_HEAP_SIZE     20000  // restart ESP if below, checked in check_volts()
 
 //use one of them below: STATUS LED or ERROR LED  - blinks when new message comes from DEVICES
 // #define BLINK_STATUS_LED_ON_RECEIVED_DATA   
@@ -158,11 +156,11 @@ const char models[10][15]        = {"other", "ESP32", "ESP32-S2", "ESP32-S3", "E
 uint8_t md_charging_value = 0;
 
 
-//change_mac variables
-char mac_org_char[22];
-byte mac_org[6];
-char mac_new_char[22];
-byte mac_new[6];
+//change_mac variables used also in make_fw_version() so must be global
+char mac_org_char[18];
+uint8_t mac_org[6];
+char mac_new_char[18];
+uint8_t mac_new[6];
 
 // for data received:
 bool temperature_received = false;
@@ -171,8 +169,7 @@ bool light_received       = false;
 bool bat_received         = false;
 bool charging_received    = false;
 
-
-bool device_timeout = false;      // used to send fault = 1 for each sensor
+bool device_timeout = false;      // used to send fault=1 to HomeKit for each sensor if info is not comming for UPDATE_TIMEOUT_S time
 
 // for tasks
 BaseType_t xReturned_check_volts;
@@ -194,10 +191,10 @@ const char charging_states[3][5] = {"NC", "ON", "FULL"};  // "OFF"};
 void led_blink(void *pvParams);
 void check_volts(void*z);
 void check_charging(void*z);
-void do_restart_esp();
+void do_restart_esp(const char *message);
 void change_mac();
 void make_serial_number(char *org_mac, char*new_mac, char *serial_number);
-void make_fw_version(char *buff);
+void make_fw_version(char *fw_numeric, char *fw_with_date_time);
 
 // fw update
 void do_update();
@@ -220,7 +217,7 @@ void led_blink(void *pvParams)
 // blinking in rtos END
 
 // restart
-void do_restart_esp()
+void do_restart_esp(const char *message)
 {
   #if defined (ERROR_RED_LED_GPIO) 
     digitalWrite(ERROR_RED_LED_GPIO,LOW);
@@ -228,14 +225,19 @@ void do_restart_esp()
   #if defined (STATUS_LED_GPIO) 
     digitalWrite(STATUS_LED_GPIO,LOW);
   #endif
+  LOG0("\n[%s]: %s\n\nRESTARTING ESP!\n\n",__func__,message);
   ESP.restart();
 }
 
 void check_volts(void*z)
 {
+  unsigned long free_mem;
   #if (USE_MAX17048 == 1)
     while(1)
       {
+        free_mem = ESP.getFreeHeap();
+        LOG1("[%s]: Free heap=%u bytes\n",__func__,free_mem);
+        if (free_mem < MIN_ALLOWED_HEAP_SIZE) do_restart_esp("Free heap too small!");
         volts   = lipo.getVoltage();
         bat_pct = lipo.getSOC();
         if (bat_pct>100) bat_pct=100; // we don't need crazy % here
@@ -366,7 +368,7 @@ void do_update()
     #endif
   }
   // 
-  do_restart_esp();
+  do_restart_esp("FW update finished");
 }
 
 // real update
@@ -412,6 +414,10 @@ void updateFirmware(uint8_t *data, size_t len)
 // download from webserver
 int update_firmware_prepare()
 {
+  char mac_new_char_short[13]; // to find the path for FW file
+  // get folder with bin file from mac address that is in devices_confi.gh in variableL  uint8_t FixedMACAddress[] = {0x1A, 0xFF, 0x01, 0x01, 0x01, 0x01};
+  snprintf(mac_new_char_short, sizeof(mac_new_char_short), "%02x%02x%02x%02x%02x%02x",FixedMACAddress[0], FixedMACAddress[1], FixedMACAddress[2], FixedMACAddress[3], FixedMACAddress[4], FixedMACAddress[5]);
+
   char firmware_file[255];
   snprintf(firmware_file,sizeof(firmware_file),"%s/%s/%s",UPDATE_FIRMWARE_HOST,mac_new_char_short,FW_BIN_FILE);
 
@@ -469,7 +475,6 @@ void change_mac()
   WiFi.mode(WIFI_STA);
   WiFi.macAddress(mac_org);
 
-
   snprintf(mac_org_char, sizeof(mac_org_char), "%02x:%02x:%02x:%02x:%02x:%02x",mac_org[0], mac_org[1], mac_org[2], mac_org[3], mac_org[4], mac_org[5]);
   Serial.printf("[%s]: OLD MAC: %s\n",__func__,mac_org_char);
 
@@ -479,9 +484,6 @@ void change_mac()
   WiFi.macAddress(mac_new);
   snprintf(mac_new_char, sizeof(mac_new_char), "%02x:%02x:%02x:%02x:%02x:%02x",mac_new[0], mac_new[1], mac_new[2], mac_new[3], mac_new[4], mac_new[5]);
   Serial.printf("[%s]: NEW MAC: %s\n",__func__,mac_new_char);
-
-  snprintf(mac_new_char_short, sizeof(mac_new_char_short), "%02x%02x%02x%02x%02x%02x",FixedMACAddress[0], FixedMACAddress[1], FixedMACAddress[2], FixedMACAddress[3], FixedMACAddress[4], FixedMACAddress[5]);
-
 }
 
 void make_serial_number(char *org_mac, char*new_mac, char *buff)
@@ -504,28 +506,27 @@ void make_serial_number(char *org_mac, char*new_mac, char *buff)
   #endif
 }
 
-void make_fw_version(char *buff)
+void make_fw_version(const char *fw_numeric, char *fw_with_date_time)
 {
-  int month, day, year, zh_hour,zh_minute,zh_second, short_y;
+  int month, day, year, zh_hour,zh_minute, short_y;
   static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
   // day, year done
-  sscanf(__DATE__, "%s %d %d", buff, &day, &year);
+  sscanf(__DATE__, "%s %d %d", fw_with_date_time, &day, &year);
   // short year
   short_y=(((year / 10U) % 10)* 10)  + ((year / 1U) % 10);
   //month done
-  month = (strstr(month_names, buff)-month_names)/3+1;
+  month = (strstr(month_names, fw_with_date_time)-month_names)/3+1;
   // time
-  String new_time = String(__TIME__);
-  new_time.replace(":"," ");
-  char new2_time[30];
-  snprintf(new2_time,sizeof(new2_time),"%s",new_time);
-  sscanf(new2_time, "%d %d %d", &zh_hour, &zh_minute, &zh_second);
+  String time_str = String(__TIME__);
+  time_str.replace(":"," ");
+  char time_chr[30];
+  snprintf(time_chr,sizeof(time_chr),"%s",time_str);
+  sscanf(time_chr, "%d %d %d", &zh_hour, &zh_minute);
 
-  // macro to char
+  // tmp char
   char fw_char[20];
-  snprintf(fw_char,sizeof(fw_char),"%s",BRIDGE_FW);
-  // char to string
-  String fw_str = String(fw_char);
+  // numeric to string
+  String fw_str = String(fw_numeric);
   // dots to space
   fw_str.replace("."," ");
   // string to char
@@ -533,20 +534,15 @@ void make_fw_version(char *buff)
   int major,minor,patch;
   // digits to int
   sscanf(fw_char, "%d %d %d", &major, &minor, &patch);
-  // char new2_fw[12];
   snprintf(fw_char,sizeof(fw_char),"%d",major*100+minor*10+patch);
-  // remove dots
-  // new_fw.replace(".","");
-  Serial.print("fw_char1=");Serial.println(fw_char);
 
   // final fw_version in format: FW.DATE.TIME (of compilation) where FW= major(hundreds)+minor(tens)+patch(units)
-  size_t nbytes = snprintf(NULL,0,"%s.%02d%02d%02d.%02d%02d",fw_char, short_y, month, day,zh_hour,zh_minute)+1;
-  Serial.print("n=");Serial.println(nbytes);
-  snprintf(buff,nbytes,           "%s.%02d%02d%02d.%02d%02d",fw_char, short_y, month, day,zh_hour,zh_minute);
+  size_t nbytes =   snprintf(NULL,0,"%s.%02d%02d%02d.%02d%02d",fw_char, short_y, month, day,zh_hour,zh_minute)+1;
+  snprintf(fw_with_date_time,nbytes,"%s.%02d%02d%02d.%02d%02d",fw_char, short_y, month, day,zh_hour,zh_minute);
 
-  // #ifdef DEBUG
-    Serial.printf("[%s]: fw_version: %s\n",__func__,buff);
-  // #endif
+  #ifdef DEBUG
+    Serial.printf("[%s]: fw_version: %s\n",__func__,fw_with_date_time);
+  #endif
 }
 
 // REMOTE DEVICES 
@@ -933,10 +929,9 @@ void setup()
   char serial_number[20];
   make_serial_number(mac_org_char,mac_new_char,serial_number);
 
-  // make fw_version char based on BRIDGE_FW and date/time of compilation in format: (major-hundreds)(minor-tens)(patch-units).yymmdd.hhmm
-  // BRIDGE_FW 1.2.3 would be: 123, BRIDGE_FW 12.3.4 would be 1234
+  // make fw_version char based on BRIDGE_FW and date/time of compilation 
   char fw_version[20];
-  make_fw_version(fw_version);
+  make_fw_version(BRIDGE_FW, fw_version);
 
   // intro
   LOG0("[%s]: HOSTNAME: %s\n",__func__,HOSTNAME);
@@ -1031,40 +1026,39 @@ void setup()
   homeSpan.enableOTA();
   homeSpan.enableWebLog(50,NTP_SERVER,"UTC","stats");   // opens webpage with logs
   homeSpan.setTimeServerTimeout(NTP_SERVER_TIMEOUT_S);
-  homeSpan.setSketchVersion(SKETCH_VERSION);
+  homeSpan.setSketchVersion(fw_version);
 
 // BRIDGE:
   new SpanAccessory();
-    // new DEV_Identify(HOSTNAME,MANUFACTURER,serial_number,MODEL,BRIDGE_FW,IDENTIFY_BLINKS);
     new DEV_Identify(HOSTNAME,MANUFACTURER,serial_number,MODEL,fw_version,IDENTIFY_BLINKS);
     new UpdateBattery();
 
 // add accessories only for DEVICE_ID = 1 as of now - don't mess while testing other boards
-#if (DEVICE_ID == 1)      
-// DEVICE 1
-  new SpanAccessory();
-    new UpdateData(DEVICE_ID_1_NAME,DEVICE_ID_1);                 
-    new RemoteTempSensor("Temperature Sensor",DEVICE_ID_1);        
-    new RemoteHumSensor("Humidity Sensor",DEVICE_ID_1);        
-    new RemoteLightSensor("Light Sensor",DEVICE_ID_1);  
-    new RemoteBattery(DEVICE_ID_1_NAME,DEVICE_ID_1);    
+  #if (DEVICE_ID == 1)      
+  // DEVICE 1
+    new SpanAccessory();
+      new UpdateData(DEVICE_ID_1_NAME,DEVICE_ID_1);                 
+      new RemoteTempSensor("Temperature Sensor",DEVICE_ID_1);        
+      new RemoteHumSensor("Humidity Sensor",DEVICE_ID_1);        
+      new RemoteLightSensor("Light Sensor",DEVICE_ID_1);  
+      new RemoteBattery(DEVICE_ID_1_NAME,DEVICE_ID_1);    
 
-// DEVICE 2
-  new SpanAccessory();
-    new UpdateData(DEVICE_ID_2_NAME,DEVICE_ID_2);                 
-    new RemoteTempSensor("Temperature Sensor",DEVICE_ID_2);        
-    new RemoteHumSensor("Humidity Sensor",DEVICE_ID_2);        
-    new RemoteLightSensor("Light Sensor",DEVICE_ID_2);       
-    new RemoteBattery(DEVICE_ID_2_NAME,DEVICE_ID_2);     
+  // DEVICE 2
+    new SpanAccessory();
+      new UpdateData(DEVICE_ID_2_NAME,DEVICE_ID_2);                 
+      new RemoteTempSensor("Temperature Sensor",DEVICE_ID_2);        
+      new RemoteHumSensor("Humidity Sensor",DEVICE_ID_2);        
+      new RemoteLightSensor("Light Sensor",DEVICE_ID_2);       
+      new RemoteBattery(DEVICE_ID_2_NAME,DEVICE_ID_2);     
 
-// DEVICE 3
-  new SpanAccessory();
-    new UpdateData(DEVICE_ID_3_NAME,DEVICE_ID_3);                 
-    new RemoteTempSensor("Temperature Sensor",DEVICE_ID_3);        
-    new RemoteHumSensor("Humidity Sensor",DEVICE_ID_3);        
-    new RemoteLightSensor("Light Sensor",DEVICE_ID_3);  
-    new RemoteBattery(DEVICE_ID_3_NAME,DEVICE_ID_3);    
-#endif
+  // DEVICE 3
+    new SpanAccessory();
+      new UpdateData(DEVICE_ID_3_NAME,DEVICE_ID_3);                 
+      new RemoteTempSensor("Temperature Sensor",DEVICE_ID_3);        
+      new RemoteHumSensor("Humidity Sensor",DEVICE_ID_3);        
+      new RemoteLightSensor("Light Sensor",DEVICE_ID_3);  
+      new RemoteBattery(DEVICE_ID_3_NAME,DEVICE_ID_3);    
+  #endif
 
   // magic starts here
   homeSpan.begin(Category::Bridges,HOSTNAME,HOSTNAME);
@@ -1087,7 +1081,7 @@ void setup()
   #endif
   //OTA in Setup END
 
-  Serial.printf("[%s]: Setup finished\n\n",__func__);
+  Serial.printf("[%s]: ========== Setup finished ==========\n\n",__func__);
 }
 
 void loop()
