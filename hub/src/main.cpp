@@ -106,7 +106,7 @@ bool fw_update = false;
 
 // BRIDGE
 // firmware:
-#define BRIDGE_FW                 "0.4.0"     // only numbers here!
+#define BRIDGE_FW                 "0.4.1"     // only numbers here!
 // BRIDGE END
 
 #define CLIENT                    "001-fv"
@@ -714,7 +714,7 @@ struct UpdateBattery : Service::BatteryService
     if (battery_level->timeVal()>(BATTERY_INTERVAL_S * 1000))
     {
       #if defined(CHARGING_GPIO) and defined(POWER_GPIO)
-        LOG1("[%s]: Hub battery status: volts=%0.2fV, percent=%0.2f%%, charging=%d(%s)\n",__func__,volts,bat_pct,charging_int,charging_states[charging_int]);
+        LOG1("[%s]: Hub charging status=%d(%s)\n",__func__,charging_int,charging_states[charging_int]);
 
         battery_level->setVal(bat_pct);  
         if ((charging_int == 1) or (charging_int == 2))
@@ -730,14 +730,15 @@ struct UpdateBattery : Service::BatteryService
       #endif 
 
       #if (USE_MAX17048 == 1)
-      if (bat_pct < LOW_BATTERY_THRESHOLD)
-        {
-          low_battery->setVal(1);  
-          LOG0("[%s]: Hub battery CRITICAL status: volts=%0.2fV, percent=%0.2f%%, charging=%d(%s)\n",__func__,volts,bat_pct,charging_int,charging_states[charging_int]);
-        } else 
-        {
-          low_battery->setVal(0);  
-        }
+        LOG1("[%s]: Hub battery status: volts=%0.2fV, percent=%0.2f%%\n",__func__,volts,bat_pct);
+        if (bat_pct < LOW_BATTERY_THRESHOLD)
+          {
+            low_battery->setVal(1);  
+            LOG0("[%s]: Hub battery CRITICAL status: volts=%0.2fV, percent=%0.2f%%, charging=%d(%s)\n",__func__,volts,bat_pct,charging_int,charging_states[charging_int]);
+          } else 
+          {
+            low_battery->setVal(0);  
+          }
       // #else // don't enable - it floods the screen
       //   LOG0("[%s]: Checking battery DISABLED!\n",__func__);
       #endif
@@ -805,12 +806,17 @@ struct DEV_Identify : Service::AccessoryInformation
 
 };
 // BRIDGE END
+
 void setup() 
 {
   Serial.begin(115200);
+  delay(50);
   Serial.printf("\n======= S T A R T =======\n");
-  unsigned long free_mem = ESP.getFreeHeap();
-  LOG0("[%s]: START: free heap=%u bytes\n",__func__,free_mem);
+  LOG0("[%s]: HOSTNAME: %s\n",__func__,HOSTNAME);
+  LOG0("[%s]: FW VERSION: %s\n",__func__,BRIDGE_FW);
+  LOG0("[%s]: COMPILATION TIME: %s %s\n",__func__,__DATE__,__TIME__);
+  LOG0("[%s]: BOARD TYPE: %s\n",__func__,MODEL);
+  LOG0("[%s]: Free heap=%u bytes\n",__func__,ESP.getFreeHeap());
 
   #ifdef ERROR_RED_LED_GPIO
     pinMode(ERROR_RED_LED_GPIO,OUTPUT);
@@ -819,7 +825,7 @@ void setup()
   homeSpan.setApSSID(HOSTNAME);
   homeSpan.setApPassword("");   // no password for CP
   homeSpan.enableOTA();         // homespan-ota
-  homeSpan.enableAutoStartAP(); // AP if no WiFi credentials
+  homeSpan.enableAutoStartAP(); // AP on startup if no WiFi credentials
   homeSpan.setHostNameSuffix("");;
   // homeSpan.setStatusAutoOff(5);  // turn OFF LED - not good as no info about the life of hub then
 
@@ -848,14 +854,14 @@ void setup()
   String mac_org_str = String(mac_org_char);
   String mac_new_str = String(mac_new_char);
 
-  mac_org_str.replace(":",""); mac_org_str.remove(0,6);
-  mac_new_str.replace(":",""); mac_new_str.remove(0,6);
+  mac_org_str.replace(":",""); mac_org_str.remove(0,8);
+  mac_new_str.replace(":",""); mac_new_str.remove(0,8);
 
   // Serial Number structure: 
   // from:  new MAC_old MAC long versions
   // from:  1aff01010103_f412fa40deac
-  // to:    010103_40deac - short versions
-  // last 6 char of new MAC_last 6 char of new MAC
+  // to:    0103_deac - short versions
+  // last 4 char of new MAC_last 4 char of new MAC
   char serial_number[36];
   snprintf(serial_number,sizeof(serial_number),"%s_%s",mac_new_str,mac_org_str);
   Serial.printf("[%s]: Bridge SN: %s\n",__func__,serial_number);
@@ -990,7 +996,6 @@ void setup()
 
   Serial.printf("[%s]: Setup finished\n\n",__func__);
 }
-
 
 void loop()
 {

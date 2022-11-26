@@ -32,9 +32,9 @@ ESP32-C3  not tested yet
     #define BOARD_TYPE                1     // 1 = ESP32-S, 2 = ESP32-S2, 3 = ESP32-S3, 4 = ESP32-C3
     // bridge fake MAC
     uint8_t FixedMACAddress[] =       {0x1A, 0xFF, 0x01, 0x01, 0x01, 0x01};
-    #define STATUS_LED_GPIO           35
+    #define STATUS_LED_GPIO           33
     #define ERROR_RED_LED_GPIO        32
-    #define CONTROL_PIN               33
+    #define CONTROL_PIN               23
 
     // with MAX17048
     #define CUSTOM_SDA_GPIO           21   // override default SDA pin
