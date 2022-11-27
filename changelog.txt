@@ -1,3 +1,5 @@
+2022-11-27:
+- 0.4.6 - disable OTA on webserver as it only works inside LAN and takes a lot of memory 
 2022-11-26:
 - 0.4.5 - 
         - consolidate checking volts and checking charging in one task

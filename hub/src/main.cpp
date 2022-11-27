@@ -38,7 +38,7 @@
 // #define DEBUG
 // #define DEBUG_XTASKS
 
-#define OTA_ACTIVE                // OTA webserver
+// #define OTA_ACTIVE                // OTA webserver - is it needed if remote update is working and no remote access anyway?
 
 // libs
 #include <Arduino.h>
@@ -105,7 +105,7 @@ bool fw_update = false;
 // DEVICES END
 
 // BRIDGE firmware:
-#define BRIDGE_FW                 "0.4.5"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
+#define BRIDGE_FW                 "0.4.6"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
 
 // folder on web with firmware files
 #define CLIENT                    "001-fv"
@@ -772,7 +772,7 @@ struct RemoteBattery : Service::BatteryService
     this->macAddress=macAddress;
     new Characteristic::Name("Battery sensor");
     battery_level     = new Characteristic::BatteryLevel(0);                     // set initial state to 0%
-    charging_state    = new Characteristic::ChargingState(0);                    // set initial state to "not charging" - charging is always OFF as sensor does not sense it
+    charging_state    = new Characteristic::ChargingState(0);                    // set initial state to "not charging" 
     low_battery       = new Characteristic::StatusLowBattery(1);                 // set initial state to true
   }
 
@@ -780,7 +780,7 @@ struct RemoteBattery : Service::BatteryService
   {
     if (bat_received)
     {
-      battery_level->setVal(bat_value_pct);   // update light
+      battery_level->setVal(bat_value_pct);   
       if (bat_value_pct < 30) 
       {
         low_bat=1;
