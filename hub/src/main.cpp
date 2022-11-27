@@ -99,13 +99,16 @@ bool fw_update = false;
 #define DEVICE_ID_2_NAME          "box 2 sensors"
 #define DEVICE_ID_3               "1A:01:01:01:01:03" // C3
 #define DEVICE_ID_3_NAME          "box 3 sensors"
+// test device
+#define DEVICE_ID_4               "1A:01:01:01:01:04" // S2
+#define DEVICE_ID_4_NAME          "box 4 sensors"
 
 // devices FW - fake as it is updated by DEVICE when connected
 // #define DEVICE_FW                 "0.1.1"
 // DEVICES END
 
 // BRIDGE firmware:
-#define BRIDGE_FW                 "0.4.6"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
+#define BRIDGE_FW                 "0.5.0"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
 
 // folder on web with firmware files
 #define CLIENT                    "001-fv"
@@ -133,13 +136,13 @@ bool fw_update = false;
 
 // END of SETTING
 
-typedef struct struct_message          // 28 bytes
+typedef struct struct_message          // 36 bytes
 {
   float md_temp;
   float md_hum;
   float md_light;
   uint8_t md_bat;
-  char md_version[10];
+  char md_version[20];
   uint8_t md_mcu_model;
   uint8_t md_charging;
 } struct_message;
@@ -151,7 +154,7 @@ float humidity_value;
 float light_value;
 uint8_t low_bat           = 1; 
 uint8_t bat_value_pct;
-char md_version_value[10];
+char md_version_value[20];
 uint8_t md_mcu_model_value= 0;
 const char models[10][15]        = {"other", "ESP32", "ESP32-S2", "ESP32-S3", "ESP32-C3"}; //    // [number of models][length of string] - used only in Serial not on HomeKit
 uint8_t md_charging_value = 0;
@@ -542,7 +545,7 @@ void make_fw_version(const char *fw_numeric, char *fw_with_date_time)
   time_str.replace(":"," ");
   char time_chr[30];
   snprintf(time_chr,sizeof(time_chr),"%s",time_str);
-  sscanf(time_chr, "%d %d %d", &zh_hour, &zh_minute);
+  sscanf(time_chr, "%d %d", &zh_hour, &zh_minute);
 
   // tmp char
   char fw_char[20];
@@ -1071,6 +1074,16 @@ void setup()
       new RemoteHumSensor("Humidity Sensor",DEVICE_ID_3);        
       new RemoteLightSensor("Light Sensor",DEVICE_ID_3);  
       new RemoteBattery(DEVICE_ID_3_NAME,DEVICE_ID_3);    
+
+
+  // DEVICE 4
+    new SpanAccessory();
+      new UpdateData(DEVICE_ID_4_NAME,DEVICE_ID_4);                 
+      new RemoteTempSensor("Temperature Sensor",DEVICE_ID_4);        
+      new RemoteHumSensor("Humidity Sensor",DEVICE_ID_4);        
+      new RemoteLightSensor("Light Sensor",DEVICE_ID_4);  
+      new RemoteBattery(DEVICE_ID_4_NAME,DEVICE_ID_4);    
+
   #endif
 
   // magic starts here

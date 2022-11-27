@@ -32,19 +32,22 @@
 
 
 /*
-  todo:
+  TODO:
+  - change: void change_mac() to bool change_mac() - true on success
+  - fw_version and serial_number
+  
   - all configuration in Preferences (or JSON?)
   - add ORG and FAKE MAC to Captive Portal
 */
 
-#define FW_VERSION          "0.3.4"
+#define FW_VERSION          "0.5.0"
 #define CLIENT              "001-fv"
 
 
 // #define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
-// #define DEVICE_ID           2 // S2 - without the box - development -  "homekit-sensor-2"
-#define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
-
+// #define DEVICE_ID           2 // S2 - third built  - outdoor -         "homekit-sensor-2"
+// #define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
+#define DEVICE_ID           4 // S2 - without the box - development -  "homekit-sensor-2"
 
 // #define DEBUG
 
@@ -90,21 +93,27 @@
 #include "HomeSpan.h"
 SpanPoint *mainDevice;
 
-typedef struct struct_message          // 28 bytes
+typedef struct struct_message          // 36 bytes
 {
   float md_temp;
   float md_hum;
   float md_light;
   uint8_t md_bat;
-  char md_version[10];
+  char md_version[20];
   uint8_t md_mcu_model;
   uint8_t md_charging;
 } struct_message;
 
 struct_message myData;
 
+// for MAC manipulation and FW update:
+char mac_org_char[18];
+uint8_t mac_org[6];
+char mac_new_char[18];
+uint8_t mac_new[6];
+
 // Firmware update
-char fake_mac[18];
+// char fake_mac[18];
 #include <HTTPClient.h>
 #include <Update.h>
 #if   (BOARD_TYPE == 1)
@@ -153,7 +162,7 @@ const char charging_states[3][5] = {"NC", "ON", "FULL"};  // "OFF"};
 
 
 // declarations
-void change_mac();
+// void change_mac();
 void sos(int led);
 void do_update();
 void updateFirmware(uint8_t *data, size_t len);
@@ -166,6 +175,12 @@ void check_charging();
 void do_esp_sleep();
 void increase_boot_count();
 void reset_boot_count();
+
+void change_mac();
+void make_serial_number(char *org_mac, char*new_mac, char *buff);
+void make_fw_version(const char *fw_numeric, char *fw_with_date_time);
+
+
 
 // CAPTIVE PORTAL
 #include <nvs_flash.h>
@@ -593,37 +608,37 @@ void led_blink(void *pvParams)
 
 // functions
 // change MAC
-void change_mac()
-{
-  snprintf(fake_mac, sizeof(fake_mac), "%02x%02x%02x%02x%02x%02x",FixedMACAddress[0], FixedMACAddress[1], FixedMACAddress[2], FixedMACAddress[3], FixedMACAddress[4], FixedMACAddress[5]);
-  WiFi.mode(WIFI_STA);
+// void change_mac()
+// {
+//   snprintf(fake_mac, sizeof(fake_mac), "%02x%02x%02x%02x%02x%02x",FixedMACAddress[0], FixedMACAddress[1], FixedMACAddress[2], FixedMACAddress[3], FixedMACAddress[4], FixedMACAddress[5]);
+//   WiFi.mode(WIFI_STA);
 
-  #ifdef DEBUG
-    byte mac[6];
-    WiFi.macAddress(mac);
-    char mac1[18];
-    snprintf(mac1, sizeof(mac1), "%02x:%02x:%02x:%02x:%02x:%02x",mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    Serial.printf("[%s]: Old MAC: %s\n",__func__,mac1);
-  #endif
+//   #ifdef DEBUG
+//     byte mac[6];
+//     WiFi.macAddress(mac);
+//     char mac1[18];
+//     snprintf(mac1, sizeof(mac1), "%02x:%02x:%02x:%02x:%02x:%02x",mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+//     Serial.printf("[%s]: Old MAC: %s\n",__func__,mac1);
+//   #endif
 
-  if (esp_wifi_set_mac(WIFI_IF_STA, &FixedMACAddress[0]) == ESP_OK)
-  {
-    // #ifdef DEBUG
-      Serial.printf("[%s]: Changing MAC SUCCESSFULL\n",__func__);
-    // #endif
-  }  else
-  {
-    Serial.printf("[%s]: Changing MAC FAILED\n",__func__);
-  }
-  #ifdef DEBUG
-    WiFi.macAddress(mac);
-    snprintf(mac1, sizeof(mac1), "%02x:%02x:%02x:%02x:%02x:%02x",mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    Serial.printf("[%s]: New MAC: %s\n",__func__,mac1);
-    Serial.printf("[%s]: Firmware bin file location: ",__func__);
-    Serial.printf("%s/%s/%s\n",UPDATE_FIRMWARE_HOST,fake_mac,FW_BIN_FILE);
-  #endif
-}
-// change MAC END
+//   if (esp_wifi_set_mac(WIFI_IF_STA, &FixedMACAddress[0]) == ESP_OK)
+//   {
+//     // #ifdef DEBUG
+//       Serial.printf("[%s]: Changing MAC SUCCESSFULL\n",__func__);
+//     // #endif
+//   }  else
+//   {
+//     Serial.printf("[%s]: Changing MAC FAILED\n",__func__);
+//   }
+//   #ifdef DEBUG
+//     WiFi.macAddress(mac);
+//     snprintf(mac1, sizeof(mac1), "%02x:%02x:%02x:%02x:%02x:%02x",mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+//     Serial.printf("[%s]: New MAC: %s\n",__func__,mac1);
+//     Serial.printf("[%s]: Firmware bin file location: ",__func__);
+//     Serial.printf("%s/%s/%s\n",UPDATE_FIRMWARE_HOST,fake_mac,FW_BIN_FILE);
+//   #endif
+// }
+// // change MAC END
 
 // blink nicely - SOS on upgrade failure
 void sos(int led)
@@ -750,8 +765,13 @@ void updateFirmware(uint8_t *data, size_t len)
 // download from webserver
 int update_firmware_prepare()
 {
+  char mac_new_char_short[13]; // to find the path for FW file
+  // get folder with bin file from mac address that is in devices_confi.gh in variableL  uint8_t FixedMACAddress[] = {0x1A, 0xFF, 0x01, 0x01, 0x01, 0x01};
+  snprintf(mac_new_char_short, sizeof(mac_new_char_short), "%02x%02x%02x%02x%02x%02x",FixedMACAddress[0], FixedMACAddress[1], FixedMACAddress[2], FixedMACAddress[3], FixedMACAddress[4], FixedMACAddress[5]);
+
   char firmware_file[255];
-  snprintf(firmware_file,sizeof(firmware_file),"%s/%s/%s",UPDATE_FIRMWARE_HOST,fake_mac,FW_BIN_FILE);
+  snprintf(firmware_file,sizeof(firmware_file),"%s/%s/%s",UPDATE_FIRMWARE_HOST,mac_new_char_short,FW_BIN_FILE);
+
 
   fw_totalLength=0;
   fw_currentLength=0;
@@ -1001,26 +1021,97 @@ void reset_boot_count()
 }
 
   
-// void fw_version_full(char const *date, char *buff) { 
-//     int month, day, year;
-//     static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
-//     sscanf(date, "%s %d %d", buff, &day, &year);
-//     month = (strstr(month_names, buff)-month_names)/3+1;
-//     sprintf(buff, "%s_%d%02d%02d",FW_VERSION, year, month, day);
-// }
+// NEW:
+void change_mac()
+{
+  WiFi.mode(WIFI_STA);
+  WiFi.macAddress(mac_org);
+
+  snprintf(mac_org_char, sizeof(mac_org_char), "%02x:%02x:%02x:%02x:%02x:%02x",mac_org[0], mac_org[1], mac_org[2], mac_org[3], mac_org[4], mac_org[5]);
+  Serial.printf("[%s]: OLD MAC: %s\n",__func__,mac_org_char);
+
+  Serial.printf("[%s]: changing MAC...",__func__);
+  if (esp_wifi_set_mac(WIFI_IF_STA, &FixedMACAddress[0]) == ESP_OK) Serial.println("SUCCESSFULL"); else Serial.println("FAILED");
+
+  WiFi.macAddress(mac_new);
+  snprintf(mac_new_char, sizeof(mac_new_char), "%02x:%02x:%02x:%02x:%02x:%02x",mac_new[0], mac_new[1], mac_new[2], mac_new[3], mac_new[4], mac_new[5]);
+  Serial.printf("[%s]: NEW MAC: %s\n",__func__,mac_new_char);
+}
+
+void make_serial_number(char *org_mac, char*new_mac, char *buff)
+{
+  String mac_org_str = String(org_mac);
+  String mac_new_str = String(new_mac);
+
+  mac_org_str.replace(":","");
+  mac_new_str.replace(":",""); 
+  mac_new_str.remove(0,6);
+
+  // find the size of the new string formatted
+  size_t nbytes = snprintf(NULL,0,"%s_%s",mac_org_str,mac_new_str) +1;
+
+  // final serial_number in format: "oldmac_6charofnewmac"
+  snprintf(buff,nbytes,"%s_%s",mac_org_str,mac_new_str);
+
+  #ifdef DEBUG
+    Serial.printf("[%s]: serial_number: %s\n",__func__,buff);
+  #endif
+}
+
+void make_fw_version(const char *fw_numeric, char *fw_with_date_time)
+{
+  int month, day, year, zh_hour,zh_minute, short_y;
+  static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+  // day, year done
+  sscanf(__DATE__, "%s %d %d", fw_with_date_time, &day, &year);
+  // short year
+  short_y=(((year / 10U) % 10)* 10)  + ((year / 1U) % 10);
+  //month done
+  month = (strstr(month_names, fw_with_date_time)-month_names)/3+1;
+  // time
+  String time_str = String(__TIME__);
+  time_str.replace(":"," ");
+  char time_chr[30];
+  snprintf(time_chr,sizeof(time_chr),"%s",time_str);
+  sscanf(time_chr, "%d %d", &zh_hour, &zh_minute);
+  // tmp char
+  char fw_char[20];
+  // numeric to string
+  String fw_str = String(fw_numeric);
+  // dots to space
+  fw_str.replace("."," ");
+  // string to char
+  snprintf(fw_char,sizeof(fw_char),"%s",fw_str);
+  int major,minor,patch;
+  // digits to int
+  sscanf(fw_char, "%d %d %d", &major, &minor, &patch);
+  snprintf(fw_char,sizeof(fw_char),"%d",major*100+minor*10+patch);
+  // final fw_version in format: FW.DATE.TIME (of compilation) where FW= major(hundreds)+minor(tens)+patch(units)
+  size_t nbytes =   snprintf(NULL,0,"%s.%02d%02d%02d.%02d%02d",fw_char, short_y, month, day,zh_hour,zh_minute)+1;
+  snprintf(fw_with_date_time,nbytes,"%s.%02d%02d%02d.%02d%02d",fw_char, short_y, month, day,zh_hour,zh_minute);
+  #ifdef DEBUG
+    Serial.printf("[%s]: fw_version: %s\n",__func__,fw_with_date_time);
+  #endif
+}
 
 void setup()
 {
   start_time = millis();
   Serial.begin(115200);
   delay(1); //50
-  
-  // char test[50];
-  // fw_version_full(__DATE__,test);
-  // Serial.printf("%s",test);
 
   Serial.printf("\n======= S T A R T =======\n");
-  Serial.printf("%s, version: %s, compiled on: %s\n",HOSTNAME,FW_VERSION,COMPILATION_TIME);
+  // apply new MAC address
+  change_mac(); // it provides: mac_org_char,  mac_new_char changed globally
+  // make new SN char based on old and new MACs
+  char serial_number[20];
+  make_serial_number(mac_org_char,mac_new_char,serial_number);
+  // make fw_version char based on BRIDGE_FW and date/time of compilation 
+  char fw_version[20];
+  make_fw_version(FW_VERSION, fw_version);
+
+  Serial.printf("[%s]: %s, version: %s, compiled on: %s\n",__func__,HOSTNAME,fw_version,COMPILATION_TIME);
+
   #ifdef DEBUG
     homeSpan.setLogLevel(2);
   #else
@@ -1041,7 +1132,7 @@ void setup()
       digitalWrite(ERROR_RED_LED_GPIO,LOW);
   #endif
 
-  change_mac();
+  // change_mac();
 
   #ifdef DEBUG
     display_wifi_credentials();
@@ -1540,10 +1631,7 @@ void setup()
 
   // other info
   myData.md_mcu_model = BOARD_TYPE;
-  snprintf(myData.md_version,sizeof(myData.md_version),"%s",FW_VERSION);
-
-  // custom FirmwareRevision is not supported ;-(
-  // snprintf(myData.md_version,sizeof(myData.md_version),"%s",test);
+  snprintf(myData.md_version,sizeof(myData.md_version),"%s",fw_version);
 
   Serial.printf("\n[%s]: Temperature=%0.2fC, Humidity=%0.2f%%, Light=%0.2flx, Battery percent=%d%%, Volts=%0.2fV\n",__func__,myData.md_temp,myData.md_hum,myData.md_light,myData.md_bat,volts);
   Serial.printf("[%s]: Charging=%d (%s), MCU model=%d, version=%s\n\n",__func__,myData.md_charging, charging_states[charging_int], myData.md_mcu_model,myData.md_version);
@@ -1664,3 +1752,4 @@ if valid channel:
 }
 
 void loop() {}
+
