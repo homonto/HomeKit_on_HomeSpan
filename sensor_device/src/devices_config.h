@@ -74,7 +74,7 @@
 // ---------------------------------------------------------------------------------------------------
 
 #elif DEVICE_ID == 4
-  #define HOSTNAME                    "homekit-sensor-4-TEST"
+  #define HOSTNAME                    "homekit-sensor-4"
   #define BOARD_TYPE                  2     // 1 = ESP32-S, 2 = ESP32-S2, 3 = ESP32-S3, 4 = ESP32-C3
 
   #define ACT_BLUE_LED_GPIO           6     // comment out if not in use - don't use "0" here
@@ -92,7 +92,7 @@
   #define USE_TSL2561                 1     // use "0" to disable
   #define LOW_BATTERY_VOLTS           3.7   // low battery warning
   #define MINIMUM_VOLTS               3.3   // device is going to forced 12 hour sleep to conserve battery
-  #define SLEEP_TIME_S                5    // seconds, 300 = 5min
+  #define SLEEP_TIME_S                300    // seconds, 300 = 5min
   uint8_t FixedMACAddress[] =         {0x1a, 0x01, 0x01, 0x01, 0x01, 0x04};
 
   #pragma message "compilation for: DEVICE_ID=4, ESP32-S2, " HOSTNAME
