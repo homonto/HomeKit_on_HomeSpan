@@ -100,15 +100,15 @@ bool fw_update = false;
 #define DEVICE_ID_3               "1A:01:01:01:01:03" // C3
 #define DEVICE_ID_3_NAME          "box 3 sensors"
 // test device
-#define DEVICE_ID_4               "1A:01:01:01:01:04" // S2
-#define DEVICE_ID_4_NAME          "box 4 sensors"
+// #define DEVICE_ID_4               "1A:01:01:01:01:04" // S2
+// #define DEVICE_ID_4_NAME          "box 4 sensors"
 
 // devices FW - fake as it is updated by DEVICE when connected
 // #define DEVICE_FW                 "0.1.1"
 // DEVICES END
 
 // BRIDGE firmware:
-#define BRIDGE_FW                 "0.5.0"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
+#define BRIDGE_FW                 "1.0.0"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
 
 // folder on web with firmware files
 #define CLIENT                    "001-fv"
@@ -1076,13 +1076,13 @@ void setup()
       new RemoteBattery(DEVICE_ID_3_NAME,DEVICE_ID_3);    
 
 
-  // DEVICE 4
-    new SpanAccessory();
-      new UpdateData(DEVICE_ID_4_NAME,DEVICE_ID_4);                 
-      new RemoteTempSensor("Temperature Sensor",DEVICE_ID_4);        
-      new RemoteHumSensor("Humidity Sensor",DEVICE_ID_4);        
-      new RemoteLightSensor("Light Sensor",DEVICE_ID_4);  
-      new RemoteBattery(DEVICE_ID_4_NAME,DEVICE_ID_4);    
+  // // DEVICE 4
+  //   new SpanAccessory();
+  //     new UpdateData(DEVICE_ID_4_NAME,DEVICE_ID_4);                 
+  //     new RemoteTempSensor("Temperature Sensor",DEVICE_ID_4);        
+  //     new RemoteHumSensor("Humidity Sensor",DEVICE_ID_4);        
+  //     new RemoteLightSensor("Light Sensor",DEVICE_ID_4);  
+  //     new RemoteBattery(DEVICE_ID_4_NAME,DEVICE_ID_4);    
 
   #endif
 

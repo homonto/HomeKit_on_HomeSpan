@@ -33,21 +33,18 @@
 
 /*
   TODO:
-  - change: void change_mac() to bool change_mac() - true on success
-  - fw_version and serial_number
-  
+  - change: void change_mac() to bool change_mac() - true on success (or not)
   - all configuration in Preferences (or JSON?)
-  - add ORG and FAKE MAC to Captive Portal
 */
 
-#define FW_VERSION          "0.5.0"
+#define FW_VERSION          "1.0.0"
 #define CLIENT              "001-fv"
 
 
 // #define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
 // #define DEVICE_ID           2 // S2 - third built  - outdoor -         "homekit-sensor-2"
-// #define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
-#define DEVICE_ID           4 // S2 - without the box - development -  "homekit-sensor-2"
+#define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
+// #define DEVICE_ID           4 // S2 - without the box - development -  "homekit-sensor-2"
 
 // #define DEBUG
 
@@ -58,7 +55,7 @@
 #define COMPILATION_TIME            (__DATE__ ", " __TIME__)
 #define BRIDGE                      "1A:FF:01:01:01:01" // bridge fake MAC
 
-#define CP_TIMEOUT_S                180  // CP and AP will terminate after this time
+#define CP_TIMEOUT_S                300  // CP and AP will terminate after this time
 #define SLEEP_TIME_H_BATTERY_EMPTY  24  // sleep hours when battery empty
 #define MAX17048_DELAY_ON_RESET_MS  200 // as per datasheet: needed before next reading from MAX17048 after reset, only in use when reset/battery change
 #define DEBOUNCE_MS                 200 // wait time after pressing FW GPIO
@@ -111,6 +108,9 @@ char mac_org_char[18];
 uint8_t mac_org[6];
 char mac_new_char[18];
 uint8_t mac_new[6];
+
+char fw_version[20];
+char serial_number[20];
 
 // Firmware update
 // char fake_mac[18];
@@ -214,27 +214,7 @@ bool valid_sleeptime_s_str_received = false;
 bool wifi_timeout = false;
 int sleeptime_s = SLEEP_TIME_S;
 
-const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE HTML><html><head>
-  <title>Captive Portal</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  </head><body>
-  <h3>Captive Portal</h3>
-  <h1>Leave blank what you don't want to change - it will use the stored values</h1>
-  <br><br>
-  <form action="/get">
-    <br>
-    SSID: <input type="text" name="ssid">
-    <br>
-    Password: <input type="password" name="password">
-    <br>
-    Channel (leave empty if Access Point/Router is set to Auto-Channel): <input type="text" name="channel">
-    <br>
-    Sleep time in seconds [1-3600] (leave empty = DEFAULT(180s)): <input type="text" name="sleeptime_s_str">
-
-    <input type="submit" value="Submit">
-  </form>
-</body></html>)rawliteral";
+String cp_html_page;
 
 class CaptiveRequestHandler : public AsyncWebHandler {
   public:
@@ -247,6 +227,87 @@ class CaptiveRequestHandler : public AsyncWebHandler {
     }
 
     void handleRequest(AsyncWebServerRequest *request) {
+cp_html_page  = 
+"<!DOCTYPE HTML><html><head>\
+<title>DEVICE PROVISIONING PORTAL</title>\
+<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+</head>\
+<style>\
+#timeout {\
+background-color: lightblue;\
+color: red;\
+padding: 4px;\
+text-align: center;\
+white-space: nowrap;\
+}\
+</style>\
+<body>\
+<h3>DEVICE PROVISIONING PORTAL</h3><h4><p id=\"timeout\"></h4>\
+<h4>Device data:</h4>\
+Name:&nbsp<i><b>";
+cp_html_page += HOSTNAME;
+cp_html_page += "</b></i><br>Type:&nbsp<i><b>";
+cp_html_page += MODEL;
+cp_html_page += "</b></i><br>Firmware version:&nbsp<i><b>";
+cp_html_page += fw_version;
+cp_html_page += "</b></i><br>Serial number:&nbsp<i><b>";
+cp_html_page += serial_number;
+cp_html_page += "</b></i><br>Orginal MAC address:&nbsp<i><b>";
+cp_html_page += mac_org_char;
+cp_html_page += "</b></i><br>Provisioned MAC address:&nbsp<i><b>";
+cp_html_page += mac_new_char;
+cp_html_page += "</b></i><br>Bridge MAC address:&nbsp<i><b>";
+cp_html_page += BRIDGE;
+cp_html_page += "</b></i>\
+<br><h4>Configuration data:</h4>\
+<form action=\"/get\">\
+<b>SSID</b> (<=32 characters): <input type=\"text\" name=\"ssid\" maxlength=\"32\" size=\"32\" value=\"";
+cp_html_page += old_ssid;
+cp_html_page += "\"\"><br>\
+<b>Password</b> (8-63 characters): <input type=\"password\" name=\"password\" id=\"password\" maxlength=\"63\" size=\"63\" value=\"";
+cp_html_page += old_password;
+cp_html_page += "\"\">\
+<input type=\"checkbox\" onclick=\"myFunction()\">Show Password\
+<script>\
+function myFunction() {\
+var x = document.getElementById(\"password\");\
+if (x.type === \"password\") {\
+x.type = \"text\";\
+} else {\
+x.type = \"password\";\
+}\
+}\
+</script>\
+<br>\
+<b>Channel</b> [1-13] - leave empty if Access Point/Router is set to Auto-Channel (or if you are not sure): <input type=\"text\" name=\"channel\" maxlength=\"2\" size=\"2\" value=\"";
+cp_html_page += old_channel;
+cp_html_page += "\"\">  <br>\
+<b>Sleep time</b> in seconds [1-3600] (if wrong value entered, default is 300s=5min) <input type=\"text\" name=\"sleeptime_s_str\" maxlength=\"4\" size=\"4\" value=\"";  
+cp_html_page += old_sleeptime_s_str;
+cp_html_page += "\"\"><br>\
+<input type=\"submit\" value=\"Submit\" style=\"border: none; height:30px; width:100px font-size:50px\">\
+</form>\
+<br>If you don't press \"Submit\" button before timeout, all configuration data will be reset to default values and <b>WiFi credentials will be erased</b></br>\
+<script>\
+var countDownDate = new Date().getTime() + (";
+cp_html_page += CP_TIMEOUT_S;
+cp_html_page += "*1000);\
+var x = setInterval(function() {\
+var now = new Date().getTime();\
+var distance = countDownDate - now;\
+var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));\
+var seconds = Math.floor((distance % (1000 * 60)) / 1000);\
+document.getElementById(\"timeout\").innerHTML = \"Timeout: \" + minutes + \"m \" + seconds + \"s \";\
+if (distance < 0) {\
+clearInterval(x);\
+document.getElementById(\"demo\").innerHTML = \"EXPIRED\";\
+}\
+}, 500);\
+</script>\
+</body></html>";              
+
+      // Serial.println(cp_html_page);
+      const char *index_html =cp_html_page.c_str();
       request->send_P(200, "text/html", index_html);
     }
 };
@@ -296,6 +357,7 @@ void setupServer()
 {
   server.on("/", HTTP_GET, [](AsyncWebServerRequest * request)
   {
+    const char *index_html = cp_html_page.c_str();
     request->send_P(200, "text/html", index_html);
     Serial.println("Client Connected");
   });
@@ -1104,10 +1166,8 @@ void setup()
   // apply new MAC address
   change_mac(); // it provides: mac_org_char,  mac_new_char changed globally
   // make new SN char based on old and new MACs
-  char serial_number[20];
   make_serial_number(mac_org_char,mac_new_char,serial_number);
   // make fw_version char based on BRIDGE_FW and date/time of compilation 
-  char fw_version[20];
   make_fw_version(FW_VERSION, fw_version);
 
   Serial.printf("[%s]: %s, version: %s, compiled on: %s\n",__func__,HOSTNAME,fw_version,COMPILATION_TIME);

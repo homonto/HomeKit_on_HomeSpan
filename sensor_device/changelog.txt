@@ -1,3 +1,5 @@
+2022-11-28:
+- 1.0.0 - big day: 1.0.0
 2022-11-27:
 - 0.5.0 - fw_version unified (same on sensors and the bridge)
 
