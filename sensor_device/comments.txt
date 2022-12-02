@@ -5,13 +5,6 @@ MAX17048 details:
 4- no need for sleep
 
 
-
-s2 new board temp sensor: 68:67:25:24:02:dc
-s2 liligo bridge:         7c:df:a1:0b:dd:0c
-esp32s                    0C:B8:15:CC:9A:D0
-used S:                   0c:b8:15:cc:c9:7c
-
-
 // battery calculation
 DEBUG on:
   S2:

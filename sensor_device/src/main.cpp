@@ -43,8 +43,8 @@
 
 // #define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
 // #define DEVICE_ID           2 // S2 - third built  - outdoor -         "homekit-sensor-2"
-#define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
-// #define DEVICE_ID           4 // S2 - without the box - development -  "homekit-sensor-2"
+// #define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
+// #define DEVICE_ID           4 // S2 - without the box - development -  "homekit-sensor-4"
 
 // #define DEBUG
 
@@ -61,7 +61,7 @@
 #define DEBOUNCE_MS                 200 // wait time after pressing FW GPIO
 #include <Arduino.h>
 #include "devices_config.h"
-#include "passwords.h"
+#include "passwords.h"              // firmware host
 
 // MAX17048 - battery fuel gauge, I2C
 #if (USE_MAX17048 == 1)
@@ -125,7 +125,7 @@ char serial_number[20];
 #elif (BOARD_TYPE == 4)
   #define FW_BIN_FILE "env_sensors.esp32c3.bin"
 #else
-  #error "FW update defined only for ESP32, ESP32-S2 and ESP32-S3 boards"
+  #error "FW update defined only for ESP32, ESP32-S2, ESP32-S3 and ESP32-C3 boards"
 #endif
 
 HTTPClient firmware_update_client;
@@ -668,40 +668,6 @@ void led_blink(void *pvParams)
 }
 // blinking in rtos END
 
-// functions
-// change MAC
-// void change_mac()
-// {
-//   snprintf(fake_mac, sizeof(fake_mac), "%02x%02x%02x%02x%02x%02x",FixedMACAddress[0], FixedMACAddress[1], FixedMACAddress[2], FixedMACAddress[3], FixedMACAddress[4], FixedMACAddress[5]);
-//   WiFi.mode(WIFI_STA);
-
-//   #ifdef DEBUG
-//     byte mac[6];
-//     WiFi.macAddress(mac);
-//     char mac1[18];
-//     snprintf(mac1, sizeof(mac1), "%02x:%02x:%02x:%02x:%02x:%02x",mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-//     Serial.printf("[%s]: Old MAC: %s\n",__func__,mac1);
-//   #endif
-
-//   if (esp_wifi_set_mac(WIFI_IF_STA, &FixedMACAddress[0]) == ESP_OK)
-//   {
-//     // #ifdef DEBUG
-//       Serial.printf("[%s]: Changing MAC SUCCESSFULL\n",__func__);
-//     // #endif
-//   }  else
-//   {
-//     Serial.printf("[%s]: Changing MAC FAILED\n",__func__);
-//   }
-//   #ifdef DEBUG
-//     WiFi.macAddress(mac);
-//     snprintf(mac1, sizeof(mac1), "%02x:%02x:%02x:%02x:%02x:%02x",mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-//     Serial.printf("[%s]: New MAC: %s\n",__func__,mac1);
-//     Serial.printf("[%s]: Firmware bin file location: ",__func__);
-//     Serial.printf("%s/%s/%s\n",UPDATE_FIRMWARE_HOST,fake_mac,FW_BIN_FILE);
-//   #endif
-// }
-// // change MAC END
-
 // blink nicely - SOS on upgrade failure
 void sos(int led)
 {
@@ -768,7 +734,6 @@ void do_update()
         delay(100);
         digitalWrite(ERROR_RED_LED_GPIO,HIGH);
         delay(30);
-        // digitalWrite(ERROR_RED_LED_GPIO,LOW);
       #endif
     }
 
@@ -922,9 +887,6 @@ void hibernate(bool force, int final_sleeping_time_s) // force = true -> wake up
 
 // https://randomnerdtutorials.com/esp32-deep-sleep-arduino-ide-wake-up-sources/ for ext0 and ext1 examples
 
-  //send ESP to deep unconditional sleep for predefined time -  wake up on timer...(heartbeat)
-  // esp_sleep_enable_timer_wakeup(final_sleeping_time_s * uS_TO_S_FACTOR);
-
   //... or on GPIO ext1 FW_UPGRADE_GPIO
   #ifdef FW_UPGRADE_GPIO //if FW_UPGRADE_GPIO  defined, wake up on it or on PIR - actually FW_UPGRADE_GPIO is obligatory
     bitmask_dec = pow(2,FW_UPGRADE_GPIO);
@@ -954,24 +916,6 @@ void hibernate(bool force, int final_sleeping_time_s) // force = true -> wake up
   #ifdef ACT_BLUE_LED_GPIO
     digitalWrite(ACT_BLUE_LED_GPIO,LOW);
   #endif
-
-  // end_time = millis();
-  // if (boot_reason != 8) //timer
-  // {
-  //   work_time = end_time - start_time + (ESP32_BOOT_TIME) + (ESP32_TAIL_TIME) + ESP32_BOOT_TIME_EXTRA;
-  // } else                // reset or power on
-  // {
-  //   work_time = end_time - start_time + (ESP32_BOOT_TIME) + (ESP32_TAIL_TIME);
-  // }
-  // #ifdef DEBUG
-  //   Serial.printf("[%s]: start_time=%ums, end_time=%ums, work_time=%dms\n",__func__,start_time,end_time,work_time);
-  // #else
-  //   Serial.printf("[%s]: Program finished in %dms at:%u\n",__func__,work_time,millis());
-  // #endif
-  // Serial.printf("========= E N D =========\n");
-  // Serial.flush();
-  // delay(3);
-  // esp_deep_sleep_start();
   do_esp_sleep();
 }
 
@@ -1711,7 +1655,7 @@ if valid channel:
     bye
   } else
   {
-    repeat sending for all channels from 1-14
+    repeat sending for all channels from 1-13
     if successful
     {
       save
