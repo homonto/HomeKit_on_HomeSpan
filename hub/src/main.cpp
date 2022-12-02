@@ -32,7 +32,7 @@
 // SETTINGS:
 
 // #define DEVICE_ID       0    // ESP32-S2 - DONT USE IT - NOT ENOUGH MEMORY!
-#define DEVICE_ID       1    // ESP32-S  - MAIN UNIT
+// #define DEVICE_ID       1    // ESP32-S  - MAIN UNIT
 // #define DEVICE_ID       2    // ESP32-S3 - TEST
 
 // #define DEBUG
@@ -103,8 +103,6 @@ bool fw_update = false;
 // #define DEVICE_ID_4               "1A:01:01:01:01:04" // S2
 // #define DEVICE_ID_4_NAME          "box 4 sensors"
 
-// devices FW - fake as it is updated by DEVICE when connected
-// #define DEVICE_FW                 "0.1.1"
 // DEVICES END
 
 // BRIDGE firmware:

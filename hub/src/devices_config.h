@@ -11,22 +11,7 @@ ESP32-C3  not tested yet
 // #elif DEVICE_ID == 0                    // ESP32-S2 - not enough memory - don't use it - FW update fails - kept for GPIO and config example only
 //     #define HOSTNAME                  "bridge1"
 //     #define BOARD_TYPE                2     // 1 = ESP32-S, 2 = ESP32-S2, 3 = ESP32-S3, 4 = ESP32-C3
-//     // bridge fake MAC
-//     uint8_t FixedMACAddress[] =       {0x1A, 0xFF, 0x01, 0x01, 0x01, 0x01};
-//     #define STATUS_LED_GPIO           4
-//     #define ERROR_RED_LED_GPIO        3
-//     #define CONTROL_PIN               0
-
-//     // with MAX17048
-//     #define CUSTOM_SDA_GPIO           8   // override default SDA pin
-//     #define CUSTOM_SCL_GPIO           9   // override default SCL pin
-//     #define USE_MAX17048              1   // use "0" to disable
-//     #define POWER_GPIO                38  // GREEN, STDB PIN6 on TP4056, LOW on CHARGED (LED ON),       comment out if not in use - don't use "0" here
-//     #define CHARGING_GPIO             39  // RED,   CHRG PIN7 on TP4056, LOW during CHARGING (LED ON),  comment out if not in use - don't use "0" here
-    
-//   #pragma message "compilation for: DEVICE_ID=1, ESP32-S2, " HOSTNAME
-// // ---------------------------------------------------------------------------------------------------
-
+// ---------------------------------------------------------------------------------------------------
 #if DEVICE_ID == 1                    // ESP32-S
     #define HOSTNAME                  "bridge1"
     #define BOARD_TYPE                1     // 1 = ESP32-S, 2 = ESP32-S2, 3 = ESP32-S3, 4 = ESP32-C3
@@ -45,25 +30,6 @@ ESP32-C3  not tested yet
     
   #pragma message "compilation for: DEVICE_ID=1, ESP32-S, " HOSTNAME
 // ---------------------------------------------------------------------------------------------------
-
-// #elif DEVICE_ID == 2                  // ESP32-S3
-//     #define HOSTNAME                  "bridge2"
-//     #define BOARD_TYPE                3     // 1 = ESP32-S, 2 = ESP32-S2, 3 = ESP32-S3, 4 = ESP32-C3
-//     // bridge fake MAC
-//     uint8_t FixedMACAddress[] =       {0x1A, 0xFF, 0x01, 0x01, 0x01, 0x02};
-//     #define STATUS_LED_GPIO           6
-//     #define ERROR_RED_LED_GPIO        5
-//     #define CONTROL_PIN               0
-
-//     // with MAX17048
-//     // #define CUSTOM_SDA_GPIO           8   // override default SDA pin
-//     // #define CUSTOM_SCL_GPIO           9   // override default SCL pin
-//     #define USE_MAX17048              0   // use "0" to disable
-//     // #define POWER_GPIO                38  // GREEN, STDB PIN6 on TP4056, LOW on CHARGED (LED ON),       comment out if not in use - don't use "0" here
-//     // #define CHARGING_GPIO             39  // RED,   CHRG PIN7 on TP4056, LOW during CHARGING (LED ON),  comment out if not in use - don't use "0" here
-    
-//   #pragma message "compilation for: DEVICE_ID=2, ESP32-S3, " HOSTNAME
-// // ---------------------------------------------------------------------------------------------------
 
 #else
   #error "Wrong DEVICE_ID chosen"
