@@ -106,7 +106,7 @@ bool fw_update = false;
 // DEVICES END
 
 // BRIDGE firmware:
-#define BRIDGE_FW                 "1.0.0"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
+#define BRIDGE_FW                 "1.0.2"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
 
 // folder on web with firmware files
 #define CLIENT                    "001-fv"
@@ -620,7 +620,9 @@ struct UpdateData : Service::AccessoryInformation
 
       snprintf(md_version_value,sizeof(md_version_value),"%s",myData.md_version); // update version
       
-      LOG0("[%s]:  Raw data from device %s just arrived: temp=%0.2fC, hum=%0.2f%%, light=%0.2flx, bat_value_pct=%d%%, charging=%d, model=%d (%s), version=%s\n",__func__,name,temperature_value,humidity_value,light_value,bat_value_pct,md_charging_value,md_mcu_model_value,models[md_mcu_model_value],md_version_value);
+      LOG0  ("[%s]:  Raw data from device %s just arrived: temp=%0.2fC, hum=%0.2f%%, light=%0.2flx, bat_value_pct=%d%%, charging=%d, model=%d (%s), version=%s\n",__func__,name,temperature_value,humidity_value,light_value,bat_value_pct,md_charging_value,md_mcu_model_value,models[md_mcu_model_value],md_version_value);
+      WEBLOG("[%s]:  Raw data from device %s just arrived: temp=%0.2fC, hum=%0.2f%%, light=%0.2flx, bat_value_pct=%d%%, charging=%d, model=%d (%s), version=%s\n",__func__,name,temperature_value,humidity_value,light_value,bat_value_pct,md_charging_value,md_mcu_model_value,models[md_mcu_model_value],md_version_value);
+
 
       md_version->setString(md_version_value);                    // update version
 

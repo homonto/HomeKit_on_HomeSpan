@@ -1,3 +1,6 @@
+2022-12-15:
+- 1.0.2 - added WEBLOG messages on arrival
+
 2022-12-02:
 - 1.0.1 - cleaning the files - no changes in code 
 
