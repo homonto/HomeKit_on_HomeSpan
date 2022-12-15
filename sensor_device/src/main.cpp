@@ -227,7 +227,7 @@ class CaptiveRequestHandler : public AsyncWebHandler {
     }
 
     void handleRequest(AsyncWebServerRequest *request) {
-cp_html_page  =
+cp_html_page  = 
 "<!DOCTYPE HTML><html><head>\
 <title>DEVICE PROVISIONING PORTAL</title>\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
