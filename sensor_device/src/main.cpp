@@ -227,7 +227,7 @@ class CaptiveRequestHandler : public AsyncWebHandler {
     }
 
     void handleRequest(AsyncWebServerRequest *request) {
-cp_html_page  = 
+cp_html_page  =
 "<!DOCTYPE HTML><html><head>\
 <title>DEVICE PROVISIONING PORTAL</title>\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
@@ -282,7 +282,7 @@ x.type = \"password\";\
 <b>Channel</b> [1-13] - leave empty if Access Point/Router is set to Auto-Channel (or if you are not sure): <input type=\"text\" name=\"channel\" maxlength=\"2\" size=\"2\" value=\"";
 cp_html_page += old_channel;
 cp_html_page += "\"\">  <br>\
-<b>Sleep time</b> in seconds [1-3600] (if wrong value entered, default is 300s=5min) <input type=\"text\" name=\"sleeptime_s_str\" maxlength=\"4\" size=\"4\" value=\"";  
+<b>Sleep time</b> in seconds [1-3600] (if wrong value entered, default is 300s=5min) <input type=\"text\" name=\"sleeptime_s_str\" maxlength=\"4\" size=\"4\" value=\"";
 cp_html_page += old_sleeptime_s_str;
 cp_html_page += "\"\"><br>\
 <input type=\"submit\" value=\"Submit\" style=\"border: none; height:30px; width:100px font-size:50px\">\
@@ -304,7 +304,7 @@ document.getElementById(\"demo\").innerHTML = \"EXPIRED\";\
 }\
 }, 500);\
 </script>\
-</body></html>";              
+</body></html>";
 
       // Serial.println(cp_html_page);
       const char *index_html =cp_html_page.c_str();
@@ -644,7 +644,7 @@ void led_blink(void *pvParams)
       // both low
       digitalWrite(ERROR_RED_LED_GPIO,LOW);
       digitalWrite(ACT_BLUE_LED_GPIO,LOW);
-      
+
       // delay
       vTaskDelay(delay_ms/portTICK_RATE_MS);
 
@@ -654,9 +654,9 @@ void led_blink(void *pvParams)
       // delay
       vTaskDelay(delay_ms/portTICK_RATE_MS);
     }
-  #else 
+  #else
     #if defined (ERROR_RED_LED_GPIO) // and defined (ERROR_RED_LED_GPIO)
-      while (1) 
+      while (1)
       {
         digitalWrite(ERROR_RED_LED_GPIO,LOW);
         vTaskDelay(delay_ms/portTICK_RATE_MS);
@@ -949,13 +949,13 @@ void check_charging()
   /*
     - both GPIO must be PULLUP as LOW is active from TP4056
     - LEDs on TP4056 are NOT needed if PULL_UP both GPIO
-    
+
     #define POWER_GPIO                38  // GREEN, STDB PIN6 on TP4056, LOW on CHARGED (LED ON),       comment out if not in use - don't use "0" here
     #define CHARGING_GPIO             39  // RED,   CHRG PIN7 on TP4056, LOW during CHARGING (LED ON),  comment out if not in use - don't use "0" here
-    
+
     truth table:
     NC:               POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP)
-    CHARGING:         POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO LOW     
+    CHARGING:         POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO LOW
     FULL (CHARGED):   POWER_GPIO LOW              CHARGING_GPIO HIGH (PULLUP)
     OFF (DISABLED):   POWER_GPIO HIGH (PULLUP)    CHARGING_GPIO HIGH (PULLUP) ???? - not checked yet
 
@@ -1026,7 +1026,7 @@ void reset_boot_count()
   delay(1);
 }
 
-  
+
 // NEW:
 void change_mac()
 {
@@ -1050,7 +1050,7 @@ void make_serial_number(char *org_mac, char*new_mac, char *buff)
   String mac_new_str = String(new_mac);
 
   mac_org_str.replace(":","");
-  mac_new_str.replace(":",""); 
+  mac_new_str.replace(":","");
   mac_new_str.remove(0,6);
 
   // find the size of the new string formatted
@@ -1111,7 +1111,7 @@ void setup()
   change_mac(); // it provides: mac_org_char,  mac_new_char changed globally
   // make new SN char based on old and new MACs
   make_serial_number(mac_org_char,mac_new_char,serial_number);
-  // make fw_version char based on BRIDGE_FW and date/time of compilation 
+  // make fw_version char based on BRIDGE_FW and date/time of compilation
   make_fw_version(FW_VERSION, fw_version);
 
   Serial.printf("[%s]: %s, version: %s, compiled on: %s\n",__func__,HOSTNAME,fw_version,COMPILATION_TIME);
