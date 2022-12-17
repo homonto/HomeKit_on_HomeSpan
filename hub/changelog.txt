@@ -1,4 +1,5 @@
 2022-12-16:
+- 1.0.6 - BATTERY_INTERVAL_S = 180 seconds to avoid flood (as per the author of the library)
 - 1.0.5 - MAX_WEBLOG_ENTRIES=180 (5 hours for 3 sensors each 5 minutes) to reduce memory usage
         - shorten weblog text and added memory heap printed
         - even if USE_MAX17048 but is not connected of faulty: don't check battery and don't send alarming messages

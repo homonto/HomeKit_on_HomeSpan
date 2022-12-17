@@ -106,7 +106,7 @@ bool fw_update = false;
 // DEVICES END
 
 // BRIDGE firmware:
-#define BRIDGE_FW                 "1.0.5"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
+#define BRIDGE_FW                 "1.0.6"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
 
 // folder on web with firmware files
 #define CLIENT                    "001-fv"
@@ -124,7 +124,7 @@ bool fw_update = false;
 // #define BLINK_STATUS_LED_ON_RECEIVED_DATA   
 #define BLINK_ERROR_LED_ON_RECEIVED_DATA    
 
-#define BATTERY_INTERVAL_S        5   // in seconds, how often to update battery status and charging status of the bridge on HomeKit (battery/charging is measured every second)
+#define BATTERY_INTERVAL_S        180   // in seconds, how often to update battery status and charging status of the bridge on HomeKit (battery/charging is measured every second)
 #define LOW_BATTERY_THRESHOLD     30  // in % to start complaining (low battery status = 1)
 #define IDENTIFY_BLINKS           10  // number of blinks when identify is called (bridge only)
 
