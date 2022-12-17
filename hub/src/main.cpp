@@ -196,7 +196,7 @@ void led_blink(void *pvParams);
 void check_volts(void*z);
 void do_restart_esp(const char *message);
 void change_mac();
-void make_serial_number(char *org_mac, char*new_mac, char *serial_number);
+void make_serial_number(char *org_mac, char *new_mac, char *serial_number);
 void make_fw_version(const char *fw_numeric, char *fw_with_date_time);
 
 // fw update
