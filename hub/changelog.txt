@@ -1,3 +1,16 @@
+2022-12-16:
+- 1.0.5 - MAX_WEBLOG_ENTRIES=180 (5 hours for 3 sensors each 5 minutes) to reduce memory usage
+        - shorten weblog text and added memory heap printed
+        - even if USE_MAX17048 but is not connected of faulty: don't check battery and don't send alarming messages
+        - initial values changed:
+                charging = 0
+                low battery = 0 (no alarm)
+                battery percent = 50 (to avoid 0% if battery is not measured)        
+        - timeout increased to 30 minutes (1800s) - to make sensors device faulty on HomeKit
+
+2022-12-16:
+- 1.0.3 - WEBLOG for 24h for 3 sensors
+
 2022-12-15:
 - 1.0.2 - added WEBLOG messages on arrival
 

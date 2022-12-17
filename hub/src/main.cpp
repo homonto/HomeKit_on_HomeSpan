@@ -32,7 +32,7 @@
 // SETTINGS:
 
 // #define DEVICE_ID       0    // ESP32-S2 - DONT USE IT - NOT ENOUGH MEMORY!
-// #define DEVICE_ID       1    // ESP32-S  - MAIN UNIT
+#define DEVICE_ID       1    // ESP32-S  - MAIN UNIT
 // #define DEVICE_ID       2    // ESP32-S3 - TEST
 
 // #define DEBUG
@@ -106,7 +106,7 @@ bool fw_update = false;
 // DEVICES END
 
 // BRIDGE firmware:
-#define BRIDGE_FW                 "1.0.2"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
+#define BRIDGE_FW                 "1.0.5"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
 
 // folder on web with firmware files
 #define CLIENT                    "001-fv"
@@ -116,8 +116,9 @@ bool fw_update = false;
 #define NTP_SERVER                "pool.ntp.org"
 #define NTP_SERVER_TIMEOUT_S      30
 #define LOG_LEVEL                 0
-#define UPDATE_TIMEOUT_S          900   // 900 = 15min, after this time Bridge reports failure of SENSOR (REMOTE) DEVICE 
+#define UPDATE_TIMEOUT_S          1800   // 1800 = 30min, after this time Bridge reports failure of SENSOR (REMOTE) DEVICE 
 #define MIN_ALLOWED_HEAP_SIZE     20000  // restart ESP if below, checked in check_volts()
+#define MAX_WEBLOG_ENTRIES        180    // 3 sensors * 12 time per hour * 5 hours = 180, each entry is around 200 bytes
 
 //use one of them below: STATUS LED or ERROR LED  - blinks when new message comes from DEVICES
 // #define BLINK_STATUS_LED_ON_RECEIVED_DATA   
@@ -186,6 +187,7 @@ TaskHandle_t check_charging_handle = NULL;
 bool blinking = false;
 
 float volts, bat_pct; 
+bool check_battery = false;
 uint8_t charging_int = 0;          // 0-NC,  1-ON, 2-FULL,   // 3-off ??
 const char charging_states[3][5] = {"NC", "ON", "FULL"};  // "OFF"};
 
@@ -619,9 +621,9 @@ struct UpdateData : Service::AccessoryInformation
       charging_received     = true;
 
       snprintf(md_version_value,sizeof(md_version_value),"%s",myData.md_version); // update version
-      
+      u_int32_t free_m = ESP.getFreeHeap();
       LOG0  ("[%s]:  Raw data from device %s just arrived: temp=%0.2fC, hum=%0.2f%%, light=%0.2flx, bat_value_pct=%d%%, charging=%d, model=%d (%s), version=%s\n",__func__,name,temperature_value,humidity_value,light_value,bat_value_pct,md_charging_value,md_mcu_model_value,models[md_mcu_model_value],md_version_value);
-      WEBLOG("[%s]:  Raw data from device %s just arrived: temp=%0.2fC, hum=%0.2f%%, light=%0.2flx, bat_value_pct=%d%%, charging=%d, model=%d (%s), version=%s\n",__func__,name,temperature_value,humidity_value,light_value,bat_value_pct,md_charging_value,md_mcu_model_value,models[md_mcu_model_value],md_version_value);
+      WEBLOG("Free=%dbytes %s: T=%0.2f H=%0.2f L=%0.2f Bat=%d%% CH=%d Board=%d v=%s\n",free_m,name,temperature_value,humidity_value,light_value,bat_value_pct,md_charging_value,md_mcu_model_value,md_version_value);
 
 
       md_version->setString(md_version_value);                    // update version
@@ -836,9 +838,9 @@ struct UpdateBattery : Service::BatteryService
   UpdateBattery() : Service::BatteryService()
   {
     new Characteristic::Name("Battery sensor");
-    battery_level     = new Characteristic::BatteryLevel(0);                     // set initial state to 0%
+    battery_level     = new Characteristic::BatteryLevel(50);                    // set initial state to 50%
     charging_state    = new Characteristic::ChargingState(0);                    // set initial state to "not charging"
-    low_battery       = new Characteristic::StatusLowBattery(1);                 // set initial state to true
+    low_battery       = new Characteristic::StatusLowBattery(0);                 // set initial state to false (no alarm)
   }
 
   void loop()
@@ -848,8 +850,6 @@ struct UpdateBattery : Service::BatteryService
     {
       #if defined(CHARGING_GPIO) and defined(POWER_GPIO)
         LOG1("[%s]: Bridge charging status=%d(%s)\n",__func__,charging_int,charging_states[charging_int]);
-
-        battery_level->setVal(bat_pct);  
         if ((charging_int == 1) or (charging_int == 2))
         {
           charging_state->setVal(1);
@@ -863,8 +863,11 @@ struct UpdateBattery : Service::BatteryService
       #endif 
 
       #if (USE_MAX17048 == 1)
-        LOG1("[%s]: Bridge battery status: volts=%0.2fV, percent=%0.2f%%\n",__func__,volts,bat_pct);
-        if (bat_pct < LOW_BATTERY_THRESHOLD)
+        if (check_battery)
+        {
+          battery_level->setVal(bat_pct);  
+          LOG1("[%s]: Bridge battery status: volts=%0.2fV, percent=%0.2f%%\n",__func__,volts,bat_pct);
+          if (bat_pct < LOW_BATTERY_THRESHOLD)
           {
             low_battery->setVal(1);  
             LOG0("[%s]: Bridge battery CRITICAL status: volts=%0.2fV, percent=%0.2f%%, charging=%d(%s)\n",__func__,volts,bat_pct,charging_int,charging_states[charging_int]);
@@ -872,8 +875,10 @@ struct UpdateBattery : Service::BatteryService
           {
             low_battery->setVal(0);  
           }
-      // #else // don't enable - it floods the screen
-      //   LOG0("[%s]: Checking battery DISABLED!\n",__func__);
+        } else 
+        {
+          low_battery->setVal(0);  
+        }
       #endif
     }
   }
@@ -1008,27 +1013,29 @@ void setup()
       lipo.enableDebugging();
       Serial.printf("[%s]: start USE_MAX17048\n",__func__);
     #endif
-    if (! lipo.begin())
-    {
-      Serial.printf("[%s]: MAX17048 NOT detected ... Check your wiring or I2C ADDR!\n",__func__);
-      Serial.printf("[%s]: HALTING PROGRAM\n",__func__);
-      while (1){}     // if no MAX17048 then program halts
-    } else
+
+    if (lipo.begin())
     {
       // lipo.quickStart();     // not needed rather, MAX17048 can recalculate in the time
+      check_battery = true;
       lipo.disableHibernate();
       #ifdef DEBUG
         Serial.printf("[%s]: start MAX17048 OK\n",__func__);
       #endif
-    }
-    xReturned_check_volts = xTaskCreate(check_volts, "check_volts", 2500, NULL, 1, &check_volts_handle);
-    if( xReturned_check_volts != pdPASS )
+      xReturned_check_volts = xTaskCreate(check_volts, "check_volts", 2500, NULL, 1, &check_volts_handle);
+      if( xReturned_check_volts != pdPASS )
+      {
+        Serial.printf("[%s]: check_volts task not created !!!ś\n",__func__);
+      } else
+      {
+        Serial.printf("[%s]: check_volts task created\n",__func__);
+      } 
+    } else 
     {
-      Serial.printf("[%s]: check_volts task not created - restarting in 1s\n",__func__);
-    } else
-    {
-      Serial.printf("[%s]: check_volts task created\n",__func__);
-    }
+      Serial.printf("[%s]: MAX17048 NOT detected ... Check your wiring or I2C ADDR!\n",__func__);
+      check_battery = false;
+    } 
+
   #else
     #ifdef DEBUG
       Serial.printf("[%s]: DONT USE_MAX17048\n",__func__);
@@ -1040,7 +1047,7 @@ void setup()
   homeSpan.setControlPin(CONTROL_PIN);
   homeSpan.setStatusPin(STATUS_LED_GPIO);
   homeSpan.enableOTA();
-  homeSpan.enableWebLog(50,NTP_SERVER,"UTC","stats");   // opens webpage with logs
+  homeSpan.enableWebLog(MAX_WEBLOG_ENTRIES,NTP_SERVER,"UTC","stats");   // opens webpage with logs
   homeSpan.setTimeServerTimeout(NTP_SERVER_TIMEOUT_S);
   homeSpan.setSketchVersion(fw_version);
 
