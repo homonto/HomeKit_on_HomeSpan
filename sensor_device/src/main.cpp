@@ -37,13 +37,13 @@
   - all configuration in Preferences (or JSON?)
 */
 
-#define FW_VERSION          "1.0.0"
+#define FW_VERSION          "1.0.2"
 #define CLIENT              "001-fv"
 
 
 // #define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
 // #define DEVICE_ID           2 // S2 - third built  - outdoor -         "homekit-sensor-2"
-// #define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
+#define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
 // #define DEVICE_ID           4 // S2 - without the box - development -  "homekit-sensor-4"
 
 // #define DEBUG
@@ -1204,7 +1204,8 @@ void setup()
     #endif
     digitalWrite(ENABLE_3V_GPIO, HIGH);
   #endif
-  delay(1);
+  while (!digitalRead(ENABLE_3V_GPIO)){}
+  delay(10);
   #if defined(CUSTOM_SDA_GPIO) and defined(CUSTOM_SCL_GPIO)
     #ifdef DEBUG
       Serial.printf("[%s]: CUSTOM I2C GPIO pins applied: SDA=%d, SCL=%d\n",__func__,CUSTOM_SDA_GPIO,CUSTOM_SCL_GPIO);
