@@ -106,7 +106,7 @@ bool fw_update = false;
 // DEVICES END
 
 // BRIDGE firmware:
-#define BRIDGE_FW                 "1.0.6"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
+#define BRIDGE_FW                 "1.0.7"     // only numbers here, major: 0-99, minor: 0-9, patch: 0-9 - if letters used they will be ignored on HomeKit 
 
 // folder on web with firmware files
 #define CLIENT                    "001-fv"
@@ -157,6 +157,8 @@ char md_version_value[20];
 uint8_t md_mcu_model_value= 0;
 const char models[10][15]        = {"other", "ESP32", "ESP32-S2", "ESP32-S3", "ESP32-C3"}; //    // [number of models][length of string] - used only in Serial not on HomeKit
 uint8_t md_charging_value = 0;
+
+uint64_t aux_UpdateBattery_interval;
 
 
 //change_mac variables used also in make_fw_version() so must be global
@@ -845,8 +847,7 @@ struct UpdateBattery : Service::BatteryService
 
   void loop()
   {
-    
-    if (battery_level->timeVal()>(BATTERY_INTERVAL_S * 1000))
+    if (millis() >= aux_UpdateBattery_interval + (BATTERY_INTERVAL_S * 1000))
     {
       #if defined(CHARGING_GPIO) and defined(POWER_GPIO)
         LOG1("[%s]: Bridge charging status=%d(%s)\n",__func__,charging_int,charging_states[charging_int]);
@@ -880,6 +881,7 @@ struct UpdateBattery : Service::BatteryService
           low_battery->setVal(0);  
         }
       #endif
+      aux_UpdateBattery_interval = millis();
     }
   }
 };

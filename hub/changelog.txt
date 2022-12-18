@@ -1,4 +1,7 @@
-2022-12-16:
+2022-12-18:
+- 1.0.7 - aux_UpdateBattery_interval to limit battery updates from bridge 
+
+2022-12-17:
 - 1.0.6 - BATTERY_INTERVAL_S = 180 seconds to avoid flood (as per the author of the library)
 - 1.0.5 - MAX_WEBLOG_ENTRIES=180 (5 hours for 3 sensors each 5 minutes) to reduce memory usage
         - shorten weblog text and added memory heap printed
