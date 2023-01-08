@@ -42,8 +42,8 @@
 
 
 // #define DEVICE_ID           1 // C3 - first built -                    "homekit-sensor-1"
-// #define DEVICE_ID           2 // S2 - third built  - outdoor -         "homekit-sensor-2"
-#define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
+#define DEVICE_ID           2 // S2 - third built  - outdoor -         "homekit-sensor-2"
+// #define DEVICE_ID           3 // C3 - second built -                   "homekit-sensor-3"
 // #define DEVICE_ID           4 // S2 - without the box - development -  "homekit-sensor-4"
 
 // #define DEBUG
@@ -227,7 +227,7 @@ class CaptiveRequestHandler : public AsyncWebHandler {
     }
 
     void handleRequest(AsyncWebServerRequest *request) {
-cp_html_page  = 
+cp_html_page  =
 "<!DOCTYPE HTML><html><head>\
 <title>DEVICE PROVISIONING PORTAL</title>\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
@@ -1757,4 +1757,3 @@ if valid channel:
 }
 
 void loop() {}
-
